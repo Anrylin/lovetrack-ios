@@ -10,6 +10,10 @@ public struct RealtimeMapScreen: View {
     @State private var locationEnabled: Bool = true
     @State private var toastMessage: String?
     @State private var toastIcon: String?
+    @State private var showLockSheet = false
+    @State private var lockReason = ""
+    @State private var lockMinutes = 30
+    @State private var locking = false
 
     public init() {}
 
@@ -21,6 +25,7 @@ public struct RealtimeMapScreen: View {
             // 底部导航由 AppTabView 统一管理
         }
         .ignoresSafeArea(.container, edges: .bottom)
+        .sheet(isPresented: $showLockSheet) { lockSheet }
     }
 
     // MARK: - Layers
@@ -103,6 +108,93 @@ public struct RealtimeMapScreen: View {
         .buttonStyle(.plain)
     }
 
+    /// 锁定 TA 的 App 使用（App 内全屏遮罩，不是系统锁屏）
+    private var lockButton: some View {
+        Button {
+            showLockSheet = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.fill")
+                Text("锁定 TA 的手机")
+                    .font(.system(size: Theme.fontSm, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .foregroundStyle(.white)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.48, green: 0.22, blue: 0.68),
+                        Color(red: 0.30, green: 0.12, blue: 0.48)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .softShadow(Theme.shadowSm)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var lockSheet: some View {
+        NavigationStack {
+            Form {
+                Section("锁定理由（TA 会看到）") {
+                    TextField("比如：上课别玩游戏", text: $lockReason)
+                }
+                Section("锁定时长") {
+                    Picker("时长", selection: $lockMinutes) {
+                        Text("5 分钟").tag(5)
+                        Text("15 分钟").tag(15)
+                        Text("30 分钟").tag(30)
+                        Text("60 分钟").tag(60)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                Section {
+                    Text("锁定后 TA 的 App 会被全屏遮罩盖住，答对数学题才能提前解锁。\n这是 App 内的使用限制，不是系统锁屏 —— iOS 不允许普通 App 锁设备。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("锁定 TA")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showLockSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(locking ? "锁定中…" : "锁定") {
+                        Task { await doLock() }
+                    }
+                    .disabled(locking)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func doLock() async {
+        guard let http = session.realtime as? HTTPRealtimeSyncService else { return }
+        locking = true
+        defer { locking = false }
+        do {
+            let reason = lockReason.trimmingCharacters(in: .whitespaces)
+            try await http.lockPartner(
+                reason: reason.isEmpty ? "乖乖听我的" : reason,
+                minutes: lockMinutes
+            )
+            showLockSheet = false
+            lockReason = ""
+            showToast("已锁定 TA \(lockMinutes) 分钟", icon: "lock.fill")
+            Log.info("RealtimeMap", "已锁定 TA \(lockMinutes) 分钟")
+        } catch {
+            showToast("锁定失败：\(error.localizedDescription)", icon: "exclamationmark.triangle")
+            Log.error("RealtimeMap", "锁定失败：\(error)")
+        }
+    }
+
     private var contentScroll: some View {
         ScrollView {
             VStack(spacing: 14) {
@@ -134,6 +226,9 @@ public struct RealtimeMapScreen: View {
                 }
                 PokeGrid(partnerName: store.partner?.displayName ?? "小月亮") { item in
                     showToast("已发送给 TA：\(item.name)", icon: "paperplane.fill")
+                }
+                if store.isPaired || session.isPaired {
+                    lockButton
                 }
                 QuickCards { kind in
                     showToast("打开「\(kind.title)」", icon: kind.systemIcon)
