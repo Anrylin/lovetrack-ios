@@ -387,6 +387,8 @@ public struct PairScreen: View {
                 }
             case .decoding:
                 return "服务器返回格式异常"
+            case .connectionClosed:
+                return "连接已断开，请重试"
             }
         }
         if let u = error as? URLError {
