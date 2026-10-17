@@ -269,15 +269,15 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
 
     /// 创建邀请码（调后端 POST /bind）
     public func createPairInvite(code: String, inviter: User) async throws {
-        var req = URLRequest(url: BackendConfig.baseURL.appendingPathComponent("bind"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 5
+        guard let token = authToken else {
+            throw ServiceError.httpStatus(401, "未登录，请先注册或登录")
+        }
+        var req = URLRequest(url: BackendConfig.baseURL.appendingPathComponent("api/pair/code"))
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 12
 
-        let body = ["userId": inviter.id]
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        Log.info("HTTPRealtime", "POST \(req.url?.absoluteString ?? "?") body=\(body)")
+        Log.info("HTTPRealtime", "GET \(req.url?.absoluteString ?? "?")")
 
         do {
             let (data, resp) = try await session.data(for: req)
@@ -371,24 +371,44 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     // MARK: - Location
 
     public func uploadPoint(_ point: LocationPoint) async throws {
-        guard isConnected, let task = task else {
-            // 没连上就跳过，不抛错（demo 阶段够用）
-            return
+        let batt = point.battery?.level ?? 1.0
+        let charging = point.battery?.isCharging ?? false
+        let batteryPct = Int((batt * 100).rounded())
+        let moving = (point.speed ?? 0) > 0.6
+
+        // 优先走 WebSocket（延迟最低，服务端会立刻转发给对方）
+        if isConnected, let task = task {
+            let msg: [String: Any] = [
+                "t": "loc",
+                "lat": point.lat,
+                "lng": point.lon,
+                "accuracy": point.horizontalAccuracy,
+                "speed": point.speed ?? 0,
+                "battery": batteryPct,
+                "charging": charging,
+                "isMoving": moving,
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: msg),
+               let str = String(data: data, encoding: .utf8) {
+                do {
+                    try await task.send(.string(str))
+                    return
+                } catch {
+                    Log.warn("HTTPRealtime", "WS 上报失败，回退 HTTP：\(error.localizedDescription)")
+                }
+            }
         }
 
-        let payload: [String: Any] = [
+        // WebSocket 不可用时回退 REST，保证位置不丢
+        try await authedJSON(path: "api/location/report", body: [
             "lat": point.lat,
             "lng": point.lon,
-            "battery": point.battery?.level ?? 1.0,
-        ]
-        let msg: [String: Any] = [
-            "type": "location_update",
-            "payload": payload,
-        ]
-
-        let data = try JSONSerialization.data(withJSONObject: msg)
-        let str = String(data: data, encoding: .utf8) ?? ""
-        try await task.send(.string(str))
+            "accuracy": point.horizontalAccuracy,
+            "speed": point.speed ?? 0,
+            "battery": batteryPct,
+            "charging": charging,
+            "isMoving": moving,
+        ])
     }
 
     public func observePartnerLocation(userId: String) -> AsyncStream<LocationPoint> {
@@ -599,8 +619,12 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
 
     private func connectWebSocket() async {
         guard task == nil else { return }
+        guard let token = authToken else {
+            Log.warn("HTTPRealtime", "未登录，跳过 WebSocket 连接（先注册/登录）")
+            return
+        }
         var comps = URLComponents(url: BackendConfig.wsURL, resolvingAgainstBaseURL: false)!
-        comps.queryItems = [URLQueryItem(name: "userId", value: userId)]
+        comps.queryItems = [URLQueryItem(name: "token", value: token)]
         guard let url = comps.url else { return }
 
         let newTask = session.webSocketTask(with: url)
@@ -649,15 +673,29 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         }
 
         switch type {
-        case "partner_location":
-            guard let payload = msg["payload"] as? [String: Any],
+        case "hello":
+            // 连接握手：后端告知我是谁、伴侣是谁
+            let partnerObj = msg["partner"] as? [String: Any]
+            if let pid = partnerObj?["id"] as? String, !pid.isEmpty {
+                self.lock.lock()
+                self.actualPartnerKey = pid
+                self.lock.unlock()
+                setPartnerKey(pid)
+                Log.info("HTTPRealtime", "hello → partnerKey=\(pid)")
+            } else {
+                Log.info("HTTPRealtime", "hello → 当前未配对")
+            }
+
+        case "partner:loc":
+            guard let payload = msg["point"] as? [String: Any],
                   let lat = payload["lat"] as? Double,
                   let lng = payload["lng"] as? Double else {
-                Log.warn("HTTPRealtime", "partner_location payload 缺 lat/lng")
+                Log.warn("HTTPRealtime", "partner:loc 缺坐标")
                 return
             }
-            let batteryLevel = payload["battery"] as? Double ?? 1.0
-            let ts = payload["timestamp"] as? TimeInterval ?? Date().timeIntervalSince1970 * 1000
+            // LoveLink 的 battery 是 0-100 整数，时间字段是 at（毫秒）
+            let batteryPct = payload["battery"] as? Double ?? 100
+            let ts = payload["at"] as? TimeInterval ?? Date().timeIntervalSince1970 * 1000
             let timestamp = Date(timeIntervalSince1970: ts / 1000)
 
             // 用 actualPartnerKey 路由（避免 RelationshipStore 和 AppSession 订阅对不上）
@@ -667,7 +705,7 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
 
             // 🐛 Bug 排查:打印接收方 / partnerKey / 实际收到的坐标。
             // 之前 bug = "A看A正确但A看B不正确",这条日志会显示 iOS 是否真的拿到了对方的坐标。
-            Log.info("HTTPRealtime", "📍 partner_location 收: 接收方=\(self.userId) partnerKey=\(partnerKey) lat=\(lat) lng=\(lng) bat=\(Int(batteryLevel*100))% age=\(Int(Date().timeIntervalSince(timestamp)))s")
+            Log.info("HTTPRealtime", "📍 partner:loc 收: 接收方=\(self.userId) partnerKey=\(partnerKey) lat=\(lat) lng=\(lng) bat=\(Int(batteryPct))% age=\(Int(Date().timeIntervalSince(timestamp)))s")
 
             // 🐛 防御:partnerLocation 不应该是自己。如果 partnerKey 跟自己一致,
             // 说明 actualPartnerKey 没正确初始化(典型症状:A 的 marker 显示在 A 自己的位置上)。
@@ -686,7 +724,7 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
                 course: -1,
                 timestamp: timestamp,
                 receivedAt: Date(),
-                battery: BatteryInfo(level: batteryLevel, isCharging: false, isLowPower: false),
+                battery: BatteryInfo(level: batteryPct / 100.0, isCharging: false, isLowPower: false),
                 source: .gps,
                 sessionId: ""
             )
@@ -711,31 +749,46 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         case "pong":
             Log.debug("HTTPRealtime", "pong received")
 
-        case "pair_success":
-            Log.info("HTTPRealtime", "🎉 pair_success 收到！")
-            let payload = msg["payload"] as? [String: Any] ?? [:]
-            let inviteeId = payload["inviteeId"] as? String ?? "partner"
-            // 更新本地状态 + 锁定 partnerKey 给后续订阅
-            self.lock.lock()
-            let r = self.relationship
-            self.lock.unlock()
-            if let rel = r {
+        case "paired":
+            Log.info("HTTPRealtime", "🎉 paired 收到！")
+            let partnerObj = msg["partner"] as? [String: Any]
+            let newPartnerId = partnerObj?["id"] as? String ?? ""
+            if !newPartnerId.isEmpty, newPartnerId != self.userId {
+                let partnerName = partnerObj?["nickname"] as? String ?? "伴侣"
                 self.lock.lock()
+                self.users[newPartnerId] = User(id: newPartnerId, displayName: partnerName)
                 self.relationship = Relationship(
-                    id: rel.id,
-                    userA: rel.userA,
-                    userB: inviteeId,
+                    id: "rel_\(self.userId)_\(newPartnerId)",
+                    userA: self.userId,
+                    userB: newPartnerId,
                     status: .active,
                     pairedAt: Date()
                 )
-                self.users[inviteeId] = User(id: inviteeId, displayName: "伴侣")
-                // partnerKey = 对方 userId（不管我是 inviter 还是 invitee）
-                let partnerKey = (rel.userA == self.userId) ? inviteeId : rel.userA
-                self.actualPartnerKey = partnerKey
                 self.lock.unlock()
-                Log.info("HTTPRealtime", "pair_success 设置 partnerKey=\(partnerKey)")
+                self.setPartnerKey(newPartnerId)
+                Log.info("HTTPRealtime", "paired → partnerKey=\(newPartnerId) 昵称=\(partnerName)")
             }
-            onPairSuccess?(inviteeId)
+            onPairSuccess?(newPartnerId)
+
+        case "unpaired":
+            Log.info("HTTPRealtime", "关系已解除")
+            self.lock.lock()
+            self.relationship = nil
+            self.lock.unlock()
+            self.setPartnerKey(nil)
+            onPairSuccess?("")
+
+        case "partner:status":
+            let sharing = msg["sharing"] as? Int
+            let battery = msg["battery"] as? Int
+            Log.info("HTTPRealtime", "partner:status sharing=\(sharing.map(String.init) ?? "-") battery=\(battery.map(String.init) ?? "-")")
+
+        case "presence":
+            let online = msg["online"] as? Bool ?? false
+            Log.info("HTTPRealtime", "presence online=\(online)")
+
+        case "loc:ack", "status:ack":
+            break
 
         default:
             Log.warn("HTTPRealtime", "未处理的消息类型: \(type)")

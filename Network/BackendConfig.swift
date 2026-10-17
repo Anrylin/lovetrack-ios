@@ -34,11 +34,11 @@ public struct BackendConfig {
         return url
     }()
 
-    /// WebSocket URL（http:// → ws://, https:// → wss://）
+    /// WebSocket URL（http:// → ws://, https:// → wss://）；路径为 LoveLink 的 /ws
     public static var wsURL: URL {
         var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         comps.scheme = comps.scheme == "https" ? "wss" : "ws"
-        comps.path = "/sync"
+        comps.path = "/ws"
         return comps.url!
     }
 }
