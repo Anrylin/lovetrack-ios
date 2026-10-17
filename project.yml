@@ -1,0 +1,100 @@
+name: LoveTrack
+options:
+  bundleIdPrefix: com.lovetrack
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  defaultConfig: Debug
+  groupSortPosition: top
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    SWIFT_STRICT_CONCURRENCY: minimal
+configs:
+  Debug: debug
+  Release: release
+# xcodegen 默认不自动生成 scheme, 显式声明避免每次 generate 覆盖 Xcode user scheme
+schemes:
+  LoveTrack:
+    build:
+      targets:
+        LoveTrack: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+targets:
+  LoveTrack:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: App
+      - path: Location
+      - path: Log
+      - path: Map
+      - path: Models
+      - path: Network
+      - path: Relationship
+      - path: UI
+    # Secrets (API keys 等) 走独立 xcconfig，已 gitignore
+    # 缺失时 xcodegen 仍能 generate, 但编译会因 key 为空失败
+    configFiles:
+      Debug: Secrets.xcconfig
+      Release: Secrets.xcconfig
+    # MapKit 是系统自带, 不需要第三方 framework
+    dependencies:
+      - sdk: CoreLocation.framework
+    info:
+      path: Info.plist
+      properties:
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        CFBundleDevelopmentRegion: "zh_CN"
+        LSRequiresIPhoneOS: true
+        MinimumOSVersion: "16.0"
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # ---- CoreLocation 三件套 (iOS 16+) ----
+        # 见 architecture.md §5 App Store 审核合规
+        # 文案要点：说清楚「为什么需要」「不开放会怎样」「数据用途」「用户控制权」
+        NSLocationWhenInUseUsageDescription: "LoveTrack 是一款情侣位置共享 App。我们需要获取你的位置，用于：① 显示你与伴侣的实时距离 ② 在你到达或离开常用地点时提醒伴侣。位置数据仅用于你和你的伴侣之间共享，不会上传给任何第三方，也不会用于广告。"
+        NSLocationAlwaysAndWhenInUseUsageDescription: "开启「始终」权限后，LoveTrack 才能在后台或锁屏时持续为你更新位置，让伴侣随时看到你所在区域（如是否已安全到家、是否仍在路上）。\n\n📍 **采集方式**：默认采用「标准守护」模式（保守档），后台静止时每 5 分钟发送一次心跳，移动时 15-30 秒更新一次，电量影响极小。如需更高频率，可手动开启「实时守护」（后台 1 分钟心跳 + 移动 3-10 秒更新）。\n\n🛑 **你的控制权**：你随时可以在「设置-守护」中切换档位、一键暂停共享 1 小时、或暂停到明早 8 点。后台定位可能显著降低电池续航。\n\n🔒 **隐私承诺**：位置数据仅你和你的伴侣可见，加密传输，绝不用于广告或第三方。"
+        NSLocationAlwaysUsageDescription: "保留此字段以兼容 iOS 10 设备。我们仅在你主动开启位置共享时才会采集位置，你随时可在 App 内关闭。"
+        # ---- 后台运行模式 ----
+        UIBackgroundModes:
+          - location
+          - fetch
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.lovetrack.app.refresh
+        # ---- App Transport Security (允许明文 HTTP，连接到本地后端) ----
+        # 生产环境务必用 HTTPS，仅开发期允许任意加载
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            "YOUR_SERVER_IP":
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lovetrack.app
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        DEVELOPMENT_TEAM: "2CG772X26Z"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_REQUIRED: YES
+        CODE_SIGNING_ALLOWED: YES

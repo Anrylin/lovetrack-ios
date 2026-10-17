@@ -1,0 +1,91 @@
+name: Build iOS IPA (unsigned)
+
+# 手动触发，或 push 到 main 时自动跑
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    name: 编译 LoveTrack（无签名）
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 显示构建环境
+        run: |
+          xcodebuild -version
+          echo "---"
+          swift --version
+
+      - name: 检查工程结构
+        run: |
+          echo "工作目录: $(pwd)"
+          ls -la
+          echo "--- scheme 列表 ---"
+          xcodebuild -list -project LoveTrack.xcodeproj
+
+      - name: 编译 Release（跳过签名）
+        run: |
+          set -o pipefail
+          BUILD_ARGS=(
+            -project LoveTrack.xcodeproj
+            -scheme LoveTrack
+            -configuration Release
+            -sdk iphoneos
+            -destination 'generic/platform=iOS'
+            -derivedDataPath build
+            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_ENTITLEMENTS=""
+          )
+          echo "▶ 第一次尝试：标准编译"
+          if xcodebuild "${BUILD_ARGS[@]}" build; then
+            echo "✅ 标准编译成功"
+          else
+            echo "::warning::标准编译失败，跳过 AppIcon 重试"
+            xcodebuild "${BUILD_ARGS[@]}" ASSETCATALOG_COMPILER_APPICON_NAME="" build
+          fi
+
+      - name: 打包成 ipa
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Build/Products/Release-iphoneos/LoveTrack.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::找不到产物 $APP_PATH"
+            find build -name "*.app" -maxdepth 6 || true
+            exit 1
+          fi
+          echo "产物大小：$(du -sh "$APP_PATH" | cut -f1)"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          # 无签名 ipa（装机前需要自己签名）
+          zip -qry LoveTrack-unsigned.ipa Payload
+          ls -lh LoveTrack-unsigned.ipa
+          echo "--- Info.plist 关键项 ---"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$APP_PATH/Info.plist" || true
+
+      - name: 上传 ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: LoveTrack-unsigned-ipa
+          path: LoveTrack-unsigned.ipa
+          retention-days: 30
+
+      - name: 上传编译日志（失败时排查用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            build/Logs/Build/*.xcactivitylog
+          retention-days: 7
+          if-no-files-found: ignore

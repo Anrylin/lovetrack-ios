@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Xcode 用户态
+xcuserdata/
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+
+# 构建产物
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+
+# 注意：Secrets.xcconfig 被 project.pbxproj 引用，必须提交（当前只是空模板）。
+# 如果你往里填了真实密钥，取消下面这行的注释：
+# Secrets.xcconfig
