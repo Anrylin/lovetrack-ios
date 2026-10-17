@@ -156,8 +156,34 @@ WebSocket 不用单独配，`BackendConfig.wsURL` 会自动把 `https` 转成 `w
 
 | 版本 | 内容 |
 |---|---|
+| `v0.1.0-ai.3` | CI 增加 paths 过滤（改文档不再触发编译）；补全 README / NOTICE / CHANGELOG；仓库元信息 |
 | `v0.1.0-ai.2` | 配对流程加固（轮询兜底 / 半配对拦截 / 错误中文化） |
 | `v0.1.0-ai.1` | 首次可编译：指向已部署后端、清作者 Team ID、补 Secrets.xcconfig、加 CI |
+
+### 更新流程（本仓库约定）
+
+每次改动按这个顺序做，保证「代码 / 说明 / 产物」三者一致：
+
+```bash
+# 1. 改代码
+
+# 2. 在 CHANGELOG.md 顶部加一条记录（改了什么 / 为什么 / 怎么验证的）
+
+# 3. 同步到 GitHub（commit message 自动取 CHANGELOG 最新版本号）
+$env:GITHUB_TOKEN = '你的 token'
+node tools/publish-github.mjs lovetrack-ios
+
+#    也可以手动指定说明
+node tools/publish-github.mjs lovetrack-ios -m "fix: 修复 xxx"
+
+# 4. 改的是代码/工程文件 → CI 自动编译；只改文档 → 不会触发（省 runner）
+
+# 5. 跟进并下载新产物
+node tools/watch-run.mjs Anryyanrui-ship-it/lovetrack-ios --wait
+node tools/download-artifact.mjs Anryyanrui-ship-it/lovetrack-ios <artifact_id>
+```
+
+> `tools/publish-github.mjs` 走 GitHub REST + Git Data API，**不需要本地 git**。
 
 ---
 
