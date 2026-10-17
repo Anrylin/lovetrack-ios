@@ -8,6 +8,50 @@
 
 ---
 
+## [v0.2.0-ai.1] — 2026-10-17
+
+**重大变更：后端从 lovetrack（demo 级、纯内存、无鉴权）切换到 LoveLink（账号体系 + SQLite 持久化 + JWT 鉴权）。**
+接口不兼容，客户端需重新编译安装。
+
+### 新增
+
+- **账号体系**：注册 / 登录界面（`AuthScreen`）、token 持久化、登录后自动恢复资料与配对状态。
+- **产品结构重构**：启动顺序改为「注册/登录 → 主页」，配对不再拦截启动；未配对时主页顶部显示「去配对」引导卡，点击弹出配对页。资料页与消息页不再被配对流程阻塞。
+- **手机状态卡**：电量、充电状态、网络类型（Wi-Fi / 蜂窝 / 离线）、可用存储、低电量模式 —— 全部系统真实值，30 秒自动刷新。
+- **今日使用统计卡**：前台分钟数、启动次数、位置上报次数、配对天数（跨天自动重置）。
+- **资料编辑**：昵称与头像 emoji 可修改并保存到后端；新增退出登录。
+- 网络层新增 `register` / `login` / `authedGet` / `authedJSON` / `updateMyProfile` / `sendMessage`。
+
+### 修复
+
+- **消息气泡文字恒为空**：`ChatMessage.content` 原为写死返回 `""` 的计算属性，且 `init(content:)` 丢弃入参。改为真实存储 `text` 字段。
+- **消息页全是假数据**：`mockMessages` 硬编码 7 条。改为从 `/api/messages` 拉取、发送走后端、5 秒轮询刷新。
+- **主页状态写死**：`isOnline: true` / `"iPhone 15 Pro"` / `"5G · WiFi"` / 电量默认 `0.78`。改为在线按位置新鲜度判断、机型如实标注、电量取真实值（无数据时不显示）。
+- **DevMock 假伴侣与假位置**：移除启动时自动注入 mock 伴侣和济南坐标的逻辑。
+- **定位刷新太慢**：标准档精度 `100m → 50m`、距离过滤 `50m → 25m`、静止心跳 `300s → 120s`、移动上报 `30s → 15s`；并关闭 `pausesLocationUpdatesAutomatically`（原来静止时系统会停止采集，对方看到的位置会长时间「冻结」）。
+- **配对链路**：`createPairInvite` → `/api/pair/code`；`acceptPairInvite` → `/api/pair/request`（改为「请求 → 对方同意」两步）；`fetchMyState` → `/api/dashboard`。
+- **WebSocket 协议**：路径 `/sync` → `/ws?token=`，事件名改为 LoveLink 协议（`hello` / `partner:loc` / `paired` / `unpaired` / `partner:status` / `presence`）。
+- **位置上报**：优先 WebSocket `{t:"loc"}`，断线自动回退 REST `/api/location/report`。
+- 资料页去除写死的「在一起 142 天」「已守护 16h」「1234 位置更新 / 567 戳一戳 / 42 守护天数 / 18 纪念日」，改为真实配对天数与手机状态。
+
+### 变更
+
+- 服务端：`lovetrack.service` 停止并取消开机自启，`lovelink.service` 接管 `127.0.0.1:3000`（保留可回滚）。
+- nginx：新增 `/ws` 的 WebSocket 透传（原来只配了 `/sync`）。
+
+### 验证
+
+- 后端公网端到端 **20/20 通过**：注册 → 登录 → 配对 → 位置互相可见 → 距离 4.59 km → WSS 实时推送 → 电量状态 → 消息收发。
+- iOS 分批编译验证：run #9、#10、#11、#13、#14 全部通过（run #12 因「泛型计算属性」不合法失败，已改为泛型函数后修复）。
+
+### 已知限制
+
+- 消息页当前是 5 秒轮询，WebSocket 的 `msg` 实时推送尚未接入。
+- 对方的手机状态（电量 / 网络）尚未上报到后端，目前只显示本机状态。
+- iOS 系统级「屏幕使用时间 / App 使用排行」需 Apple 特批 `com.apple.developer.family-controls` 权限，自签版本无法实现。
+
+---
+
 ## [v0.1.0-ai.3] — 2026-10-17
 
 ### 变更

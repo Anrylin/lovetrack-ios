@@ -43,8 +43,8 @@ public actor LocationManager {
         public var backgroundAccuracy: CLLocationAccuracy {
             switch self {
             case .off:       return kCLLocationAccuracyThreeKilometers
-            case .standard: return kCLLocationAccuracyHundredMeters
-            case .realtime: return kCLLocationAccuracyNearestTenMeters
+            case .standard:  return 50    // 原来 100m，对方位置刷新偏慢
+            case .realtime:  return kCLLocationAccuracyNearestTenMeters
             }
         }
 
@@ -52,7 +52,7 @@ public actor LocationManager {
         public var distanceFilter: CLLocationDistance {
             switch self {
             case .off:       return kCLDistanceFilterNone
-            case .standard:  return 50
+            case .standard:  return 25    // 原来 50m
             case .realtime:  return kCLDistanceFilterNone
             }
         }
@@ -61,8 +61,8 @@ public actor LocationManager {
         public var heartbeatInterval: TimeInterval {
             switch self {
             case .off:       return .infinity
-            case .standard:  return 300   // 5 min
-            case .realtime:  return 60    // 1 min
+            case .standard:  return 120   // 原来 5 分钟，静止时对方位置太久不刷新
+            case .realtime:  return 45    // 原来 60s
             }
         }
 
@@ -70,8 +70,8 @@ public actor LocationManager {
         public var maxMovingReportInterval: TimeInterval {
             switch self {
             case .off:       return .infinity
-            case .standard:  return 30
-            case .realtime:  return 10
+            case .standard:  return 15    // 原来 30s
+            case .realtime:  return 8     // 原来 10s
             }
         }
 
@@ -80,8 +80,9 @@ public actor LocationManager {
         }
 
         public var pausesLocationUpdatesAutomatically: Bool {
-            // realtime 需要关掉（不然静止时系统会停采），standard 让系统自己判断
-            self == .realtime ? false : true
+            // 关键：保持 false。原来 standard 让系统自动暂停，
+            // 静止时系统会直接停采，对方看到的位置会「冻结」很久。
+            false
         }
     }
 
