@@ -311,6 +311,38 @@ public actor LocationManager {
         }
     }
 
+    // MARK: - 位置缓存（加速冷启动首帧）
+
+    private static let cacheLatKey = "loc.cache.lat"
+    private static let cacheLngKey = "loc.cache.lng"
+    private static let cacheAtKey = "loc.cache.at"
+
+    /// 每次收到定位就落盘，供下次冷启动立刻点亮地图
+    static func saveCachedLocation(_ loc: CLLocation) {
+        let d = UserDefaults.standard
+        d.set(loc.coordinate.latitude, forKey: cacheLatKey)
+        d.set(loc.coordinate.longitude, forKey: cacheLngKey)
+        d.set(loc.timestamp.timeIntervalSince1970, forKey: cacheAtKey)
+    }
+
+    /// 读取缓存位置（超过 24 小时视为失效）
+    static func loadCachedLocation() -> CLLocation? {
+        let d = UserDefaults.standard
+        guard d.object(forKey: cacheLatKey) != nil else { return nil }
+        let lat = d.double(forKey: cacheLatKey)
+        let lng = d.double(forKey: cacheLngKey)
+        let ts = d.double(forKey: cacheAtKey)
+        guard lat != 0, lng != 0 else { return nil }
+        guard Date().timeIntervalSince1970 - ts < 86_400 else { return nil }
+        return CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+            altitude: 0,
+            horizontalAccuracy: 500,
+            verticalAccuracy: -1,
+            timestamp: Date(timeIntervalSince1970: ts)
+        )
+    }
+
     // MARK: - Internal (called by delegate)
 
     fileprivate func handleLocations(_ locations: [CLLocation]) {
@@ -352,6 +384,8 @@ public actor LocationManager {
             for cont in continuations.values {
                 cont.yield(event)
             }
+            // 落盘缓存，供下次冷启动秒开地图
+            Self.saveCachedLocation(loc)
         }
     }
 

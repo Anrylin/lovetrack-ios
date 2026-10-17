@@ -48,6 +48,27 @@ public struct MessageScreen: View {
 
     // MARK: - Header
 
+    private var partnerName: String {
+        session.relationshipStore.partner?.displayName ?? "还没有配对"
+    }
+
+    private var partnerEmoji: String {
+        session.relationshipStore.isPaired ? "👧🏻" : "🔗"
+    }
+
+    private var partnerOnline: Bool {
+        guard let ts = session.relationshipStore.lastKnownPartnerLocation?.timestamp else { return false }
+        return Date().timeIntervalSince(ts) < 120
+    }
+
+    private var partnerStatusText: String {
+        guard session.relationshipStore.isPaired else { return "配对后才能互发消息" }
+        guard let ts = session.relationshipStore.lastKnownPartnerLocation?.timestamp else { return "在线" }
+        guard partnerOnline else { return "暂时离线" }
+        let mins = max(0, Int(Date().timeIntervalSince(ts) / 60))
+        return mins <= 1 ? "在线 · 刚刚更新位置" : "在线 · 最后位置 \(mins) 分钟前"
+    }
+
     private var header: some View {
         VStack(spacing: 0) {
             StatusBar()
@@ -58,19 +79,19 @@ public struct MessageScreen: View {
                         Color(red: 0.91, green: 0.84, blue: 1.00)
                     ], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 40, height: 40)
-                    Text("月")
+                    Text(partnerEmoji)
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.white)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("小月亮")
+                    Text(partnerName)
                         .font(.system(size: Theme.fontLg, weight: .bold))
                         .foregroundColor(Theme.text)
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(Theme.success)
+                            .fill(partnerOnline ? Theme.success : Theme.textSubtle)
                             .frame(width: 6, height: 6)
-                        Text("在线 · 最后位置 1 分钟前")
+                        Text(partnerStatusText)
                             .font(.system(size: 11))
                             .foregroundColor(Theme.textMuted)
                     }

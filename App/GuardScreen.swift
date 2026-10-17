@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 守护 Tab — 大守护状态 hero + 今日守护数据 + 设置项
 public struct GuardScreen: View {
@@ -41,9 +42,13 @@ public struct GuardScreen: View {
         ScrollView {
             VStack(spacing: 14) {
                 StatusBar()
-                guardHero
-                todayStats
-                guardianTimeline
+                if store.isPaired {
+                    guardHero
+                    todayStats
+                    guardianTimeline
+                } else {
+                    notPairedHint
+                }
                 settingsSection
                 Color.clear.frame(height: 100)
             }
@@ -51,6 +56,94 @@ public struct GuardScreen: View {
             .padding(.top, 12)
         }
         .scrollIndicators(.hidden)
+    }
+
+    // MARK: - 未配对提示（避免未配对时显示任何虚假守护数据）
+
+    private var notPairedHint: some View {
+        VStack(spacing: 12) {
+            Text("💞").font(.system(size: 44))
+            Text("还没有和 TA 配对")
+                .font(.system(size: Theme.fontLg, weight: .semibold))
+                .foregroundColor(Theme.text)
+            Text("配对后才能开启守护、查看 TA 的位置和电量")
+                .font(.system(size: Theme.fontXs))
+                .multilineTextAlignment(.center)
+                .foregroundColor(Theme.textMuted)
+            Button {
+                session.showPairSheet = true
+            } label: {
+                Text("去配对")
+                    .font(.system(size: Theme.fontSm, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(Theme.primary))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous)
+                .fill(Theme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous)
+                .strokeBorder(Theme.border, lineWidth: 1.5)
+        )
+        .softShadow(Theme.shadowSm)
+    }
+
+    // MARK: - 真实数据
+
+    private static let clockFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d"
+        return f
+    }()
+
+    private var partnerDisplayName: String {
+        store.partner?.displayName ?? "TA"
+    }
+
+    /// 对方的头像（后端暂无 emoji 字段，用 TA 占位）
+    private var partnerAvatarText: String {
+        "TA"
+    }
+
+    private var partnerOnlineNow: Bool {
+        guard let ts = store.lastKnownPartnerLocation?.timestamp else { return false }
+        return Date().timeIntervalSince(ts) < 120
+    }
+
+    /// 守护时长用配对天数表示（可真实计算）
+    private var guardDurationText: String {
+        guard let rel = store.relationship else { return "守护已开启" }
+        let days = max(1, (Calendar.current.dateComponents([.day], from: rel.pairedAt, to: Date()).day ?? 0) + 1)
+        return "已守护 \(days) 天"
+    }
+
+    private var pairedDays: String {
+        guard let rel = store.relationship else { return "—" }
+        let d = (Calendar.current.dateComponents([.day], from: rel.pairedAt, to: Date()).day ?? 0) + 1
+        return "\(max(1, d))"
+    }
+
+    private var todayReportCount: String {
+        "\(UserDefaults.standard.integer(forKey: "usage.reports"))"
+    }
+
+    private var myBatteryText: String {
+        let lvl = UIDevice.current.batteryLevel
+        return lvl < 0 ? "—" : "\(Int((lvl * 100).rounded()))%"
     }
 
     // MARK: - Hero
@@ -70,7 +163,7 @@ public struct GuardScreen: View {
                             .font(.system(size: Theme.fontXl, weight: .bold))
                             .foregroundColor(.white)
                         Text(guardEnabled
-                             ? "已守护 16 小时 24 分钟"
+                             ? guardDurationText
                              : "开启后实时共享位置给 TA")
                             .font(.system(size: Theme.fontXs))
                             .foregroundColor(.white.opacity(0.9))
@@ -81,9 +174,9 @@ public struct GuardScreen: View {
 
                 // 守护双方头像 + 中间爱心连线
                 HStack(spacing: 0) {
-                    guardAvatar(avatarText: "月", name: "小月亮", isOnline: true)
+                    guardAvatar(avatarText: partnerAvatarText, name: partnerDisplayName, isOnline: partnerOnlineNow)
                     connectorLine
-                    guardAvatar(avatarText: "我", name: "我", isOnline: true)
+                    guardAvatar(avatarText: session.myEmoji, name: session.currentUser.displayName, isOnline: true)
                 }
             }
             .padding(20)
@@ -151,9 +244,9 @@ public struct GuardScreen: View {
 
     private var todayStats: some View {
         HStack(spacing: 10) {
-            statCard(systemIcon: "mappin.circle.fill", value: "12", unit: "次", label: "今日位置更新")
-            statCard(systemIcon: "shield.checkered", value: "2", unit: "次", label: "安全到家")
-            statCard(systemIcon: "clock.fill", value: "16h", unit: "24m", label: "守护时长")
+            statCard(systemIcon: "mappin.circle.fill", value: todayReportCount, unit: "次", label: "今日位置更新")
+            statCard(systemIcon: "heart.fill", value: pairedDays, unit: "天", label: "配对天数")
+            statCard(systemIcon: "battery.75", value: myBatteryText, unit: "", label: "我的电量")
         }
     }
 
@@ -209,21 +302,48 @@ public struct GuardScreen: View {
                         .font(.system(size: Theme.fontMd, weight: .semibold))
                 }
                 Spacer()
-                Text("11/22")
+                Text(Self.dayFormatter.string(from: Date()))
                     .font(.system(size: 11))
                     .foregroundColor(Theme.textMuted)
             }
 
             VStack(spacing: 0) {
-                timelineRow(time: "22:30", systemIcon: "moon.fill", title: "正在守护中", subtitle: "小月亮位置: 万达广场", accent: true)
-                Divider().padding(.leading, 50)
-                timelineRow(time: "20:15", systemIcon: "bag.fill", title: "到达 万达广场", subtitle: "停留约 25 分钟", accent: false)
-                Divider().padding(.leading, 50)
-                timelineRow(time: "18:00", systemIcon: "house.fill", title: "已安全到家", subtitle: "系统自动识别", accent: false)
-                Divider().padding(.leading, 50)
-                timelineRow(time: "14:30", systemIcon: "graduationcap.fill", title: "到达 山大科技园", subtitle: "停留 3 小时 22 分钟", accent: false)
-                Divider().padding(.leading, 50)
-                timelineRow(time: "08:00", systemIcon: "sun.max.fill", title: "开始今日守护", subtitle: "小月亮出门", accent: false)
+                if let ts = store.lastKnownPartnerLocation?.timestamp {
+                    timelineRow(
+                        time: Self.clockFormatter.string(from: ts),
+                        systemIcon: "location.fill",
+                        title: "收到 TA 的位置",
+                        subtitle: "\(partnerDisplayName) 最近一次同步",
+                        accent: true
+                    )
+                    Divider().padding(.leading, 50)
+                }
+                if let rel = store.relationship {
+                    timelineRow(
+                        time: Self.clockFormatter.string(from: rel.pairedAt),
+                        systemIcon: "heart.fill",
+                        title: "开始守护",
+                        subtitle: "与 \(partnerDisplayName) 建立配对",
+                        accent: store.lastKnownPartnerLocation == nil
+                    )
+                    Divider().padding(.leading, 50)
+                }
+                if let ts = session.lastLocation?.timestamp {
+                    timelineRow(
+                        time: Self.clockFormatter.string(from: ts),
+                        systemIcon: "location.circle.fill",
+                        title: "我的位置已同步",
+                        subtitle: "正在共享给 TA",
+                        accent: false
+                    )
+                }
+                if store.lastKnownPartnerLocation == nil && session.lastLocation == nil {
+                    Text("暂无位置记录，等定位生效后会自动出现")
+                        .font(.system(size: Theme.fontXs))
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(Theme.textMuted)
+                        .padding(.vertical, 18)
+                }
             }
         }
         .padding(16)

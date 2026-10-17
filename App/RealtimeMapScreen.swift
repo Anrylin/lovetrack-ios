@@ -255,14 +255,14 @@ public struct RealtimeMapScreen: View {
                 DistanceCard(
                     locationEnabled: $locationEnabled,
                     distanceMeters: distanceMeters,
-                    partnerName: store.partner?.displayName ?? "小月亮"
+                    partnerName: store.partner?.displayName ?? "TA"
                 ) { newValue in
                     showToast(
                         newValue ? "已开启实时定位 · 共享位置给 TA" : "已关闭定位 · TA 将看不到你的位置",
                         icon: newValue ? "location.fill" : "moon.fill"
                     )
                 }
-                PokeGrid(partnerName: store.partner?.displayName ?? "小月亮") { item in
+                PokeGrid(partnerName: store.partner?.displayName ?? "TA") { item in
                     showToast("已发送给 TA：\(item.name)", icon: "paperplane.fill")
                 }
                 if store.isPaired || session.isPaired {
@@ -295,7 +295,7 @@ public struct RealtimeMapScreen: View {
             .softShadow(Theme.shadowMd)
         } else {
             MiniMap(
-                partnerName: store.partner?.displayName ?? "小月亮",
+                partnerName: store.partner?.displayName ?? "TA",
                 partnerAvatar: "👧🏻",
                 lastUpdatedText: "1 分钟前更新"
             )

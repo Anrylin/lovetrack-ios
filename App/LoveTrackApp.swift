@@ -293,6 +293,12 @@ final class AppSession: ObservableObject {
         // 0. 检查暂停是否到期
         _ = guardSettings.checkPauseExpiry()
 
+        // 0.5 首帧加速：先用上次缓存的位置点亮地图，GPS 首个点到了会自动覆盖
+        if lastLocation == nil, let cached = LocationManager.loadCachedLocation() {
+            lastLocation = cached
+            Log.info("AppSession", "⚡️ 用缓存位置秒开地图：\(cached.coordinate.latitude), \(cached.coordinate.longitude)，缓存于 \(Int(Date().timeIntervalSince(cached.timestamp)))s 前")
+        }
+
         // 1. 注册定位
         authState = await locationManager.requestAuthorization()
         // 2. 启动后台保活

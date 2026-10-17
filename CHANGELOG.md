@@ -8,6 +8,49 @@
 
 ---
 
+## [v0.3.0-ai.1] — 2026-10-18
+
+新增「远程锁定」与「截图」两项能力。实现方式**经拆包 LinkUp 1.5.9 (com.youloft.houseblend) 验证**，
+按其真实机制实现，未复刻其低效环节。
+
+### 拆包依据（LinkUp 的真实做法）
+
+- **锁机**：`Classes/Mondule/Person/LockApps/`，文案「手机已被Ta锁定」「答对问题.解锁手机」
+  「设置锁定时长」「上课别玩游戏」→ 是 **App 内全屏遮罩**，`SpringBoard` 命中 0 次，不涉及系统锁屏。
+- **截图**：`screenShotTa` / `screenShotMe` 命令 + `MFMessageComposeViewController` 发短信
+  （正文「实时截屏 ..LinkUp」）→ 触发对方 iOS「快捷指令个人自动化」→ 拉起 `ylwatcher://screenShotCourse`
+  → 对方 App 截图回传。截图 API 全是 `UIGraphicsImageRenderer` / `drawViewHierarchyInRect`（只能截自己）。
+- **使用报告**：`APP使用统计.json`(176KB) / `App统计.json`(278KB) 实为 **Lottie 动画**
+  （`{"v":"5.12.2","nm":"实时App使用统计"}`），不是真实统计。
+
+### 新增
+
+- **远程锁定**（`POST /api/lock`、`GET /api/lock/active`、`POST /api/lock/unlock` + WS `lock` / `lock:done`）
+  - 发起方：主页「锁定 TA 的手机」→ 填理由 + 选时长（5/15/30/60 分钟）
+  - 被锁方：WS 秒级推送 → 全屏遮罩（理由 + 倒计时 + 数学题解锁）
+  - 杀掉 App 重开会通过 `/api/lock/active` 恢复遮罩
+  - 明确告知用户这是 App 内限制，不是系统锁屏
+- **截图（请求-同意模式）**：WS `shot:req` / `shot:resp` 转发 + `kind=image` 图片消息
+  - A 点「看看 TA 的屏幕」→ B 弹「TA 想看你现在的屏幕」→ 同意后截图上传 → A 在消息里看到图片
+  - 相比 LinkUp 的「短信 + 快捷指令」：无需双方配置、不花钱、1~2 秒完成、成功率更高
+  - 代价：需对方每次点同意（不能偷偷截）
+- 消息页支持图片气泡（base64 JPEG 解码显示）
+- 后端 body 限制 `256kb → 2mb`，`kind=image` 时 `content` 上限放宽到 900000 字符
+
+### 验证
+
+- 锁定接口实测 **11/11 通过**（锁定、实时推送、理由与时长、查询、解锁、双方状态同步）
+- 截图链路实测 **9/9 通过**（请求转发、同意回传、图片上传、实时推送、历史读取、拒绝分支）
+- iOS 编译：run #16、#17、#18 全部通过
+
+### 已知限制
+
+- 截图只能截**本 App 界面**，截不到微信等第三方 App（iOS 系统限制，非实现问题）
+- 截图需对方**在 App 前台**并点同意
+- 锁定可通过杀掉 App 绕过界面，但重开会恢复；无系统级强制力
+
+---
+
 ## [v0.2.0-ai.1] — 2026-10-17
 
 **重大变更：后端从 lovetrack（demo 级、纯内存、无鉴权）切换到 LoveLink（账号体系 + SQLite 持久化 + JWT 鉴权）。**
