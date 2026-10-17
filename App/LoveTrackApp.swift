@@ -55,6 +55,10 @@ final class AppSession: ObservableObject {
     @Published var isLoggedIn: Bool = false
     /// 控制「配对」弹层显示（由主页按钮触发）
     @Published var showPairSheet: Bool = false
+    /// 我的头像 emoji（来自账号，可在「我的」页修改）
+    @Published var myEmoji: String = "🐰"
+    /// 我的账号名（注册时定的，不随昵称变化）
+    @Published var myAccount: String = ""
 
     private var locationTask: Task<Void, Never>?
     private var partnerLocationTask: Task<Void, Never>?
@@ -122,6 +126,8 @@ final class AppSession: ObservableObject {
     func markLoggedIn(_ result: HTTPRealtimeSyncService.AuthResult) {
         isLoggedIn = true
         currentUser = User(id: result.userId, displayName: result.nickname)
+        myEmoji = result.emoji
+        myAccount = result.account
         if let pid = result.partnerId, !pid.isEmpty {
             relationshipStore.partner = User(id: pid, displayName: result.partnerName ?? "伴侣")
             relationshipStore.isPaired = result.paired

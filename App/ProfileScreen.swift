@@ -1,9 +1,19 @@
 import SwiftUI
+import Foundation
 
 /// 我的 Tab — 个人资料 hero + 守护数据 + 设置 + 会员入口
 public struct ProfileScreen: View {
     @EnvironmentObject var session: AppSession
     @EnvironmentObject var store: RelationshipStore
+
+    @State private var showEdit = false
+    @State private var editNickname = ""
+    @State private var editEmoji = "🐰"
+    @State private var saving = false
+    @State private var editError: String?
+
+    /// 与后端 EMOJIS 白名单保持一致，否则会被后端回退成默认值
+    private let emojis = ["🐱", "🐶", "🦊", "🐰", "🐻", "🐼", "🐨", "🐯", "🦁", "🐸", "🐧", "🐳"]
 
     public init() {}
 
@@ -13,6 +23,7 @@ public struct ProfileScreen: View {
             contentScroll
         }
         .ignoresSafeArea(edges: .bottom)
+        .sheet(isPresented: $showEdit) { editSheet }
     }
 
     // MARK: - Background
@@ -67,7 +78,9 @@ public struct ProfileScreen: View {
                             .frame(width: 32, height: 32)
                             .background(Circle().fill(Color.white.opacity(0.25)))
                     }
-                    Button {} label: {
+                    Button {
+                        showEdit = true
+                    } label: {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white)
@@ -85,7 +98,7 @@ public struct ProfileScreen: View {
                         Color(red: 0.91, green: 0.84, blue: 1.00)
                     ], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 76, height: 76)
-                    .overlay(Text("我").font(.system(size: 28, weight: .bold)).foregroundColor(.white))
+                    .overlay(Text(session.myEmoji).font(.system(size: 38)))
                 }
 
                 VStack(spacing: 2) {
@@ -97,14 +110,21 @@ public struct ProfileScreen: View {
                             .font(.system(size: 14))
                             .foregroundColor(.white)
                     }
-                    Text("ID: \(String(session.currentUser.id.prefix(8)))")
+                    Text(session.myAccount.isEmpty ? "ID: \(String(session.currentUser.id.prefix(8)))" : "@\(session.myAccount)")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.white.opacity(0.85))
                 }
 
                 HStack(spacing: 16) {
-                    relationshipPill(systemIcon: "heart.fill", text: "在一起 142 天")
-                    relationshipPill(systemIcon: "shield.lefthalf.filled", text: "已守护 16h")
+                    if store.isPaired, let rel = store.relationship {
+                        relationshipPill(systemIcon: "heart.fill", text: "在一起 \(daysTogether(rel)) 天")
+                    } else {
+                        relationshipPill(systemIcon: "heart.slash", text: "暂未配对")
+                    }
+                    relationshipPill(
+                        systemIcon: "shield.lefthalf.filled",
+                        text: session.isPaired ? "守护中" : "待开启"
+                    )
                 }
             }
             .padding(.horizontal, 20)
@@ -285,6 +305,121 @@ public struct ProfileScreen: View {
             .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - 编辑资料
+
+    /// 在一起第几天（配对当天算第 1 天）
+    private func daysTogether(_ rel: Relationship) -> Int {
+        let d = Calendar.current.dateComponents([.day], from: rel.pairedAt, to: Date()).day ?? 0
+        return max(1, d + 1)
+    }
+
+    private var editSheet: some View {
+        NavigationStack {
+            Form {
+                Section("昵称（TA 看到的名字）") {
+                    TextField("昵称", text: $editNickname)
+                }
+                Section("头像") {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 10) {
+                        ForEach(emojis, id: \.self) { e in
+                            Button {
+                                editEmoji = e
+                            } label: {
+                                Text(e)
+                                    .font(.system(size: 26))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .background(editEmoji == e ? Color.purple.opacity(0.18) : Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                if let err = editError {
+                    Section {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+                Section {
+                    Button("退出登录", role: .destructive) {
+                        showEdit = false
+                        session.signOutAccount()
+                    }
+                }
+            }
+            .navigationTitle("编辑资料")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showEdit = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "保存中…" : "保存") {
+                        Task { await saveProfile() }
+                    }
+                    .disabled(saving || editNickname.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .onAppear {
+                editNickname = session.currentUser.displayName
+                editEmoji = session.myEmoji
+                editError = nil
+            }
+        }
+    }
+
+    @MainActor
+    private func saveProfile() async {
+        let trimmed = editNickname.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            editError = "昵称不能为空"
+            return
+        }
+        guard let http = session.realtime as? HTTPRealtimeSyncService else {
+            editError = "网络层未初始化"
+            return
+        }
+
+        saving = true
+        editError = nil
+        defer { saving = false }
+
+        do {
+            try await http.updateMyProfile(nickname: trimmed, emoji: editEmoji)
+            session.currentUser = User(id: session.currentUser.id, displayName: trimmed)
+            session.myEmoji = editEmoji
+            showEdit = false
+            Log.info("ProfileScreen", "资料已保存：\(trimmed) \(editEmoji)")
+        } catch {
+            editError = friendly(error)
+            Log.error("ProfileScreen", "保存失败：\(error)")
+        }
+    }
+
+    private func friendly(_ error: Error) -> String {
+        if let e = error as? HTTPRealtimeSyncService.ServiceError {
+            switch e {
+            case let .httpStatus(code, body):
+                switch code {
+                case 400: return "昵称或头像不合法（昵称最多 20 字）"
+                case 401: return "登录已失效，请重新登录"
+                case 0: return "连不上服务器"
+                default: return "服务器返回 \(code)\(body.isEmpty ? "" : "：\(body.prefix(50))")"
+                }
+            case .decoding: return "服务器返回格式异常"
+            case .connectionClosed: return "连接已断开"
+            }
+        }
+        if let u = error as? URLError {
+            return "网络错误：\(u.localizedDescription)"
+        }
+        return error.localizedDescription
     }
 }
 

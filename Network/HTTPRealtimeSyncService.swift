@@ -265,6 +265,16 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
+    /// 更新我的资料（PUT /api/auth/user/me）
+    public func updateMyProfile(nickname: String, emoji: String) async throws {
+        try await authedJSON(
+            path: "api/auth/user/me",
+            method: "PUT",
+            body: ["nickname": nickname, "emoji": emoji]
+        )
+        Log.info("HTTPRealtime", "资料已更新：\(nickname) \(emoji)")
+    }
+
     // MARK: - Pairing
 
     /// 创建邀请码（调后端 POST /bind）
