@@ -12,6 +12,13 @@ DerivedData/
 *.ipa
 *.dSYM.zip
 
-# 注意：Secrets.xcconfig 被 project.pbxproj 引用，必须提交（当前只是空模板）。
+# Node（tools/ 下的辅助脚本用）
+node_modules/
+package-lock.json
+
+# 本地 npm 配置（各人 registry 不同，不提交）
+.npmrc
+
+# 注意：Secrets.xcconfig 被 project.pbxproj 引用，**必须提交**（当前只是空模板）。
 # 如果你往里填了真实密钥，取消下面这行的注释：
 # Secrets.xcconfig
