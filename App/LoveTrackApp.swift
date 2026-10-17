@@ -112,6 +112,20 @@ final class AppSession: ObservableObject {
         Log.info("AppSession", "completePairing called, isPaired=\(isPaired)")
     }
 
+    /// 主动向后端确认「我是否已配对」并恢复完整状态，返回最新结果。
+    ///
+    /// 用处有两个：
+    /// 1. inviter 停在「你的邀请码」页面等对方加入时轮询兜底 —— WS 的 pair_success 可能漏推
+    ///    （后端 in-memory 重启、网络抖动都会导致），光靠推送会让 A 永远卡住。
+    /// 2. PairScreen 点「进入 App」前先核实一次，避免进入"半配对"状态
+    ///    （isPaired=true 但 partner 为空、没有订阅位置）。
+    @MainActor
+    @discardableResult
+    func refreshPairingFromServer() async -> Bool {
+        await recoverRelationshipFromServer()
+        return isPaired
+    }
+
     func bootstrap() async {
         // 0. 检查暂停是否到期
         _ = guardSettings.checkPauseExpiry()

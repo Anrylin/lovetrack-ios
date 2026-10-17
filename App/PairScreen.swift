@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreLocation
+import Foundation
 
 /// 配对屏幕（创建邀请码 / 输入邀请码）。
 ///
@@ -15,6 +16,8 @@ public struct PairScreen: View {
     @State private var inputCode: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
+    /// inviter 停在邀请码页等待对方加入时的轮询任务（WS 推送之外的兜底）
+    @State private var pollTask: Task<Void, Never>?
 
     enum Mode {
         case home          // 默认：两个按钮
@@ -178,22 +181,49 @@ public struct PairScreen: View {
             Spacer()
 
             Button {
-                session.completePairing()
+                Task { await enterAppNow() }
             } label: {
-                Text("进入 App")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.white)
-                    .foregroundStyle(Color.purple)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                Group {
+                    if isLoading {
+                        ProgressView().tint(Color.purple)
+                    } else {
+                        Text("进入 App").font(.headline)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.white)
+                .foregroundStyle(Color.purple)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+            }
+            .disabled(isLoading)
+
+            if let err = errorMessage {
+                Text(err)
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.yellow)
+                    .padding(.horizontal, 8)
             }
 
+            Text("TA 输入邀请码后会自动进入，通常不用手动点")
+                .font(.caption2)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.7))
+
             Button("返回") {
+                pollTask?.cancel()
+                pollTask = nil
                 mode = .home
                 inviteCode = ""
+                errorMessage = nil
             }
             .foregroundStyle(.white.opacity(0.8))
+        }
+        .onAppear { startWaitingForPartner() }
+        .onDisappear {
+            pollTask?.cancel()
+            pollTask = nil
         }
     }
 
@@ -269,7 +299,7 @@ public struct PairScreen: View {
             mode = .create
             Log.info("PairScreen", "✅ 创建邀请码成功: \(code)")
         } catch {
-            errorMessage = "创建失败: \(error.localizedDescription)"
+            errorMessage = friendlyMessage(error)
             Log.error("PairScreen", "❌ 创建邀请码失败: \(error)")
         }
     }
@@ -286,8 +316,93 @@ public struct PairScreen: View {
             session.completePairing()
             Log.info("PairScreen", "✅ 绑定成功: code=\(inputCode)")
         } catch {
-            errorMessage = "绑定失败: \(error.localizedDescription)"
+            errorMessage = friendlyMessage(error)
             Log.error("PairScreen", "❌ 绑定失败: \(error)")
         }
+    }
+
+    // MARK: - Waiting / Enter
+
+    /// inviter 停在邀请码页时，每 4 秒向后端确认一次「TA 加入了没」。
+    ///
+    /// 后端是 in-memory 的，WebSocket 的 pair_success 在几种情况下会漏推
+    /// （服务端重启、WS 断线重连窗口期、NAT 超时），只靠推送会让邀请方永远卡在这一页。
+    /// 这里用 HTTP /me 做兜底，最多等 3 分钟。
+    @MainActor
+    private func startWaitingForPartner() {
+        pollTask?.cancel()
+        pollTask = Task { @MainActor in
+            for i in 1...45 {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if Task.isCancelled { return }
+                let paired = await session.refreshPairingFromServer()
+                if paired {
+                    Log.info("PairScreen", "✅ 轮询第 \(i) 次检测到 TA 已加入，自动进入主页")
+                    self.isLoading = false
+                    return
+                }
+            }
+            Log.info("PairScreen", "等待对方加入超时（约 3 分钟），可让 TA 重新输入或重新生成码")
+        }
+    }
+
+    /// 点「进入 App」：先向后端核实是否真的已配对，避免进入"半配对"状态。
+    @MainActor
+    private func enterAppNow() async {
+        isLoading = true
+        errorMessage = nil
+
+        let paired = await session.refreshPairingFromServer()
+
+        isLoading = false
+        if paired {
+            pollTask?.cancel()
+            pollTask = nil
+            Log.info("PairScreen", "✅ 服务端确认已配对，进入主页")
+        } else {
+            errorMessage = "TA 还没输入邀请码。\n让 TA 输入上面的码，这里会自动进入。"
+            Log.info("PairScreen", "进入 App 被拦下：服务端显示尚未配对")
+        }
+    }
+
+    /// 把网络/服务端错误翻译成用户看得懂的话（原始 NSError 对用户没意义）。
+    private func friendlyMessage(_ error: Error) -> String {
+        if let e = error as? HTTPRealtimeSyncService.ServiceError {
+            switch e {
+            case let .httpStatus(code, body):
+                switch code {
+                case 0:
+                    return "连不上服务器，检查网络"
+                case 400:
+                    return "不能和自己配对，或参数有误"
+                case 404:
+                    return "邀请码不存在（可能已被使用，或服务器重启过）"
+                case 409:
+                    return "这个邀请码已经被别人用掉了"
+                case 410:
+                    return "邀请码已过期（10 分钟有效），让 TA 重新生成"
+                default:
+                    let detail = body.isEmpty ? "" : "：\(body.prefix(50))"
+                    return "服务器返回 \(code)\(detail)"
+                }
+            case .decoding:
+                return "服务器返回格式异常"
+            }
+        }
+        if let u = error as? URLError {
+            switch u.code {
+            case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+                return "连不上服务器（\(BackendConfig.baseURL.host ?? "?")）"
+            case .timedOut:
+                return "请求超时，网络不太好"
+            case .notConnectedToInternet:
+                return "设备没有联网"
+            case .appTransportSecurityRequiresSecureConnection:
+                return "被 iOS 的 ATS 拦下（后端地址不是 https）"
+            default:
+                return "网络错误：\(u.localizedDescription)"
+            }
+        }
+        return error.localizedDescription
     }
 }
