@@ -39,6 +39,12 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     /// 锁被解除时回调
     public var onLockCleared: (() -> Void)?
 
+    /// 收到对方的截图请求（需要在 UI 上弹确认）
+    public var onShotRequest: (() -> Void)?
+
+    /// 对方对我请求的回应（true = 同意，随后会收到 image 消息）
+    public var onShotResponse: ((Bool) -> Void)?
+
     // MARK: - Internal state
 
     private let session: URLSession
@@ -308,6 +314,35 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         guard isLoggedIn else { return nil }
         let json = try await authedGet(path: "api/lock/active")
         return json["lock"] as? [String: Any]
+    }
+
+    // MARK: - 截图（请求-同意模式）
+
+    /// 请求看对方屏幕（WS 发 shot:req）
+    public func requestScreenshot() async throws {
+        guard isConnected, let task = task else {
+            throw ServiceError.connectionClosed
+        }
+        let msg: [String: Any] = ["t": "shot:req"]
+        let data = try JSONSerialization.data(withJSONObject: msg)
+        try await task.send(.string(String(data: data, encoding: .utf8) ?? "{}"))
+        Log.info("HTTPRealtime", "📸 已请求对方截图")
+    }
+
+    /// 回应对方的截图请求（同意 / 拒绝）
+    public func sendShotResponse(accept: Bool) {
+        guard isConnected, let task = task else { return }
+        let msg: [String: Any] = ["t": "shot:resp", "accept": accept]
+        guard let data = try? JSONSerialization.data(withJSONObject: msg),
+              let s = String(data: data, encoding: .utf8) else { return }
+        Task { try? await task.send(.string(s)) }
+        Log.info("HTTPRealtime", "📸 已回应截图请求：\(accept ? "同意" : "拒绝")")
+    }
+
+    /// 发送截图（kind=image，content 存 base64 JPEG）
+    public func sendImage(_ base64: String) async throws {
+        try await authedJSON(path: "api/messages", body: ["content": base64, "kind": "image"])
+        Log.info("HTTPRealtime", "📸 截图已上传（\(base64.count / 1024) KB）")
     }
 
     // MARK: - Pairing
@@ -852,6 +887,15 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         case "lock:done":
             Log.info("HTTPRealtime", "🔓 锁已解除")
             onLockCleared?()
+
+        case "shot:req":
+            Log.info("HTTPRealtime", "📸 收到对方的截图请求")
+            onShotRequest?()
+
+        case "shot:resp":
+            let accept = msg["accept"] as? Bool ?? false
+            Log.info("HTTPRealtime", "📸 对方回应截图请求：\(accept ? "同意" : "拒绝")")
+            onShotResponse?(accept)
 
         default:
             Log.warn("HTTPRealtime", "未处理的消息类型: \(type)")

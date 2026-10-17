@@ -137,6 +137,44 @@ public struct RealtimeMapScreen: View {
         .buttonStyle(.plain)
     }
 
+    /// 请求看 TA 的屏幕（对方需在弹窗里点同意）
+    private var shotButton: some View {
+        Button {
+            Task { await requestShot() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "camera.viewfinder")
+                Text("看看 TA 的屏幕")
+                    .font(.system(size: Theme.fontSm, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .foregroundStyle(Theme.primary)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Theme.primary.opacity(0.35), lineWidth: 1.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    @MainActor
+    private func requestShot() async {
+        guard let http = session.realtime as? HTTPRealtimeSyncService else { return }
+        do {
+            try await http.requestScreenshot()
+            showToast("已请求，等 TA 同意", icon: "camera.viewfinder")
+            Log.info("RealtimeMap", "已请求截图")
+        } catch {
+            showToast("请求失败：\(error.localizedDescription)", icon: "exclamationmark.triangle")
+            Log.error("RealtimeMap", "截图请求失败：\(error)")
+        }
+    }
+
     private var lockSheet: some View {
         NavigationStack {
             Form {
@@ -229,6 +267,7 @@ public struct RealtimeMapScreen: View {
                 }
                 if store.isPaired || session.isPaired {
                     lockButton
+                    shotButton
                 }
                 QuickCards { kind in
                     showToast("打开「\(kind.title)」", icon: kind.systemIcon)

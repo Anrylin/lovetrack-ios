@@ -61,6 +61,10 @@ final class AppSession: ObservableObject {
     @Published var myAccount: String = ""
     /// 当前生效的锁定（被对方锁 App 时非 nil，RootView 用它盖全屏遮罩）
     @Published var activeLock: LockState?
+    /// 收到对方的截图请求（RootView 弹确认框）
+    @Published var incomingShotRequest = false
+    /// 截图相关提示
+    @Published var shotNotice: String?
 
     /// 锁定状态
     struct LockState: Equatable {
@@ -104,6 +108,18 @@ final class AppSession: ObservableObject {
                 Task { @MainActor in
                     self?.activeLock = nil
                     Log.info("AppSession", "🔓 锁定已解除")
+                }
+            }
+            http.onShotRequest = { [weak self] in
+                Task { @MainActor in
+                    self?.incomingShotRequest = true
+                    Log.info("AppSession", "📸 收到对方的截图请求")
+                }
+            }
+            http.onShotResponse = { [weak self] accept in
+                Task { @MainActor in
+                    self?.shotNotice = accept ? "TA 同意了，正在截图…" : "TA 拒绝了这次请求"
+                    Log.info("AppSession", "对方回应截图：\(accept ? "同意" : "拒绝")")
                 }
             }
         }
@@ -177,6 +193,44 @@ final class AppSession: ObservableObject {
         relationshipStore.relationship = nil
         activeLock = nil
         Log.info("AppSession", "已退出登录")
+    }
+
+    /// 回应对方的截图请求（同意则立刻截图上传）
+    @MainActor
+    func respondToShot(accept: Bool) async {
+        incomingShotRequest = false
+        guard let http = realtime as? HTTPRealtimeSyncService else { return }
+
+        if accept {
+            if let b64 = AppSession.captureScreenBase64() {
+                do {
+                    try await http.sendImage(b64)
+                    shotNotice = "已把当前屏幕发给 TA"
+                    Log.info("AppSession", "📸 截图已发送")
+                } catch {
+                    shotNotice = "截图发送失败：\(error.localizedDescription)"
+                    Log.error("AppSession", "截图发送失败：\(error)")
+                }
+            } else {
+                shotNotice = "截图失败（系统限制）"
+            }
+        }
+        http.sendShotResponse(accept: accept)
+    }
+
+    /// 截取当前 App 窗口 → 压缩成 base64 JPEG（约 100KB）
+    static func captureScreenBase64(maxWidth: CGFloat = 800, quality: CGFloat = 0.55) -> String? {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first(where: { $0.isKeyWindow }) else { return nil }
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        let shot = renderer.image { ctx in
+            window.layer.render(in: ctx.cgContext)
+        }
+        let scale = min(1, maxWidth / max(shot.size.width, 1))
+        let target = CGSize(width: shot.size.width * scale, height: shot.size.height * scale)
+        let r2 = UIGraphicsImageRenderer(size: target)
+        let resized = r2.image { _ in shot.draw(in: CGRect(origin: .zero, size: target)) }
+        return resized.jpegData(compressionQuality: quality)?.base64EncodedString()
     }
 
     /// 答对题后解锁（通知后端，让双方状态一致）
@@ -455,6 +509,14 @@ struct RootView: View {
                         .sheet(isPresented: $session.showPairSheet) {
                             PairScreen()
                         }
+                        .alert("截图提示", isPresented: Binding(
+                            get: { session.shotNotice != nil },
+                            set: { if !$0 { session.shotNotice = nil } }
+                        )) {
+                            Button("好") { session.shotNotice = nil }
+                        } message: {
+                            Text(session.shotNotice ?? "")
+                        }
                 }
             }
 
@@ -466,6 +528,16 @@ struct RootView: View {
                 .transition(.opacity)
                 .zIndex(999)
             }
+        }
+        .alert("TA 想看你现在的屏幕", isPresented: $session.incomingShotRequest) {
+            Button("拒绝", role: .cancel) {
+                Task { await session.respondToShot(accept: false) }
+            }
+            Button("同意") {
+                Task { await session.respondToShot(accept: true) }
+            }
+        } message: {
+            Text("同意后会截图当前 App 界面发给 TA。一次性授权，不会持续录屏。")
         }
     }
 
