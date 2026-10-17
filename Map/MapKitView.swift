@@ -17,21 +17,56 @@ public struct MapKitView: View {
     public let me: MapPerson?
     public let zoomLevel: CGFloat
     public let showsUserLocation: Bool
+    /// 地图样式（经典 / 卫星 / 混合）—— 对应苹果 MapKit 的 standard / imagery / hybrid
+    public let style: MapStyleOption
 
     @State private var cameraPosition: MapCameraPosition
+
+    /// 地图样式选项
+    public enum MapStyleOption: String, CaseIterable, Identifiable {
+        case standard, satellite, hybrid
+
+        public var id: String { rawValue }
+
+        public var label: String {
+            switch self {
+            case .standard: return "经典"
+            case .satellite: return "卫星"
+            case .hybrid: return "混合"
+            }
+        }
+
+        public var icon: String {
+            switch self {
+            case .standard: return "map"
+            case .satellite: return "globe.asia.australia.fill"
+            case .hybrid: return "square.stack.3d.up.fill"
+            }
+        }
+
+        var mapStyle: MapStyle {
+            switch self {
+            case .standard: return .standard(elevation: .realistic)
+            case .satellite: return .imagery
+            case .hybrid: return .hybrid
+            }
+        }
+    }
 
     public init(
         center: CLLocationCoordinate2D,
         partner: MapPerson? = nil,
         me: MapPerson? = nil,
         zoomLevel: CGFloat = 14,
-        showsUserLocation: Bool = true
+        showsUserLocation: Bool = true,
+        style: MapStyleOption = .standard
     ) {
         self.center = center
         self.partner = partner
         self.me = me
         self.zoomLevel = zoomLevel
         self.showsUserLocation = showsUserLocation
+        self.style = style
         // zoomLevel (高德/Google 体系) → MKCoordinateSpan 半径 (米)
         // zoomLevel 14 ≈ 半径 1500m, 15 ≈ 750m, 13 ≈ 3000m
         let radius = zoomLevelToRadius(zoomLevel)
@@ -62,7 +97,7 @@ public struct MapKitView: View {
                 .annotationTitles(.hidden)
             }
         }
-        .mapStyle(.standard(elevation: .realistic))
+        .mapStyle(style.mapStyle)
         .mapControls {
             MapCompass()
             MapScaleView()

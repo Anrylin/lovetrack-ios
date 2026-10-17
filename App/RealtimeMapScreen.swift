@@ -10,6 +10,11 @@ public struct RealtimeMapScreen: View {
     @State private var locationEnabled: Bool = true
     @State private var toastMessage: String?
     @State private var toastIcon: String?
+    /// 地图样式（经典 / 卫星 / 混合），从本地恢复
+    @State private var mapStyle: MapKitView.MapStyleOption = {
+        let raw = UserDefaults.standard.string(forKey: "map.style") ?? ""
+        return MapKitView.MapStyleOption(rawValue: raw) ?? .standard
+    }()
     @State private var showLockSheet = false
     @State private var lockReason = ""
     @State private var lockMinutes = 30
@@ -284,21 +289,47 @@ public struct RealtimeMapScreen: View {
 
     @ViewBuilder
     private var mapSection: some View {
-        if let center = mapCenter {
-            MapKitView(
-                center: center,
-                partner: mapPartner,
-                me: mapMe
-            )
-            .frame(height: 320)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous))
-            .softShadow(Theme.shadowMd)
-        } else {
-            MiniMap(
-                partnerName: store.partner?.displayName ?? "TA",
-                partnerAvatar: "👧🏻",
-                lastUpdatedText: "1 分钟前更新"
-            )
+        ZStack(alignment: .topTrailing) {
+            if let center = mapCenter {
+                MapKitView(
+                    center: center,
+                    partner: mapPartner,
+                    me: mapMe,
+                    style: mapStyle
+                )
+                .frame(height: 320)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous))
+                .softShadow(Theme.shadowMd)
+            } else {
+                MiniMap(
+                    partnerName: store.partner?.displayName ?? "TA",
+                    partnerAvatar: "👧🏻",
+                    lastUpdatedText: "1 分钟前更新"
+                )
+            }
+
+            // 地图样式切换（只有真地图才显示；仿 LinkUp 的「经典/卫星」切换）
+            if mapCenter != nil {
+                HStack(spacing: 6) {
+                    ForEach(MapKitView.MapStyleOption.allCases) { opt in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { mapStyle = opt }
+                            UserDefaults.standard.set(opt.rawValue, forKey: "map.style")
+                        } label: {
+                            Image(systemName: opt.icon)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(mapStyle == opt ? .white : Theme.text)
+                                .frame(width: 32, height: 32)
+                                .background(
+                                    Circle().fill(mapStyle == opt ? Theme.primary : Color.white.opacity(0.92))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(opt.label)
+                    }
+                }
+                .padding(10)
+            }
         }
     }
 
