@@ -520,12 +520,25 @@ public struct GuardScreen: View {
 // MARK: - 紧急联系人
 
 public struct EmergencyContactsView: View {
-    @State private var contacts: [(String, String, String)] = [
-        ("妈妈", "138 ****  8866", "M"),
-        ("爸爸", "139 ****  5521", "B"),
-        ("闺蜜 小雨", "186 ****  0073", "X"),
-    ]
+    @State private var contacts: [(String, String, String)] = []
+
+    private static let storeKey = "guard.emergencyContacts"
+
+    /// 从本地读取（原来这里是硬编码的三个假联系人）
+    private static func loadFromDisk() -> [(String, String, String)] {
+        guard let raw = UserDefaults.standard.array(forKey: storeKey) as? [[String]] else { return [] }
+        return raw.compactMap { arr in
+            guard arr.count >= 2 else { return nil }
+            return (arr[0], arr[1], arr.count > 2 ? arr[2] : String(arr[0].prefix(1)))
+        }
+    }
+
+    private func persist() {
+        UserDefaults.standard.set(contacts.map { [$0.0, $0.1, $0.2] }, forKey: Self.storeKey)
+    }
     @State private var showAdd = false
+    @State private var newName = ""
+    @State private var newPhone = ""
 
     public init() {}
 
@@ -534,6 +547,20 @@ public struct EmergencyContactsView: View {
             Theme.bg.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 12) {
+                    if contacts.isEmpty {
+                        VStack(spacing: 8) {
+                            Text("👨‍👩‍👧").font(.system(size: 40))
+                            Text("还没有紧急联系人")
+                                .font(.system(size: Theme.fontSm, weight: .medium))
+                                .foregroundColor(Theme.text)
+                            Text("添加后，一键通知就能同时告知他们")
+                                .font(.system(size: Theme.fontXs))
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(Theme.textMuted)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 36)
+                    }
                     ForEach(contacts.indices, id: \.self) { i in
                         contactRow(name: contacts[i].0, phone: contacts[i].1, avatarText: contacts[i].2)
                     }
@@ -544,6 +571,26 @@ public struct EmergencyContactsView: View {
         }
         .navigationTitle("紧急联系人")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { contacts = Self.loadFromDisk() }
+        .alert("添加紧急联系人", isPresented: $showAdd) {
+            TextField("姓名", text: $newName)
+            TextField("手机号", text: $newPhone)
+                .keyboardType(.phonePad)
+            Button("取消", role: .cancel) {
+                newName = ""
+                newPhone = ""
+            }
+            Button("添加") {
+                let n = newName.trimmingCharacters(in: .whitespaces)
+                let p = newPhone.trimmingCharacters(in: .whitespaces)
+                if !n.isEmpty && !p.isEmpty {
+                    contacts.append((n, p, String(n.prefix(1))))
+                    persist()
+                }
+                newName = ""
+                newPhone = ""
+            }
+        }
     }
 
     private func contactRow(name: String, phone: String, avatarText: String) -> some View {

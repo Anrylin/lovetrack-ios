@@ -313,6 +313,9 @@ public actor LocationManager {
 
     // MARK: - 位置缓存（加速冷启动首帧）
 
+    /// 还没拿到过第一个定位点（首帧加速：先粗后精）
+    private var firstFixPending = true
+
     private static let cacheLatKey = "loc.cache.lat"
     private static let cacheLngKey = "loc.cache.lng"
     private static let cacheAtKey = "loc.cache.at"
@@ -386,6 +389,13 @@ public actor LocationManager {
             }
             // 落盘缓存，供下次冷启动秒开地图
             Self.saveCachedLocation(loc)
+
+            // 第一个点到手：立刻恢复到当前档位的正常精度
+            if firstFixPending {
+                firstFixPending = false
+                cl.desiredAccuracy = profile.desiredAccuracy
+                cl.distanceFilter = profile.distanceFilter
+            }
         }
     }
 
@@ -419,8 +429,10 @@ public actor LocationManager {
         case .foreground:
             cl.stopMonitoringSignificantLocationChanges()
             cl.allowsBackgroundLocationUpdates = false
-            cl.desiredAccuracy = profile.foregroundAccuracy
-            cl.distanceFilter = profile.distanceFilter
+            // 首帧加速：冷启动时高精度首个定位点可能要等 10s+，
+            // 先用 1km 精度且不做距离过滤，尽快拿到第一个点把地图点亮
+            cl.desiredAccuracy = firstFixPending ? kCLLocationAccuracyKilometer : profile.foregroundAccuracy
+            cl.distanceFilter = firstFixPending ? kCLDistanceFilterNone : profile.distanceFilter
             cl.pausesLocationUpdatesAutomatically = profile.pausesLocationUpdatesAutomatically
             cl.startUpdatingLocation()
 
