@@ -393,7 +393,14 @@ public actor LocationManager {
             // 第一个点到手：立刻恢复到当前档位的正常精度
             if firstFixPending {
                 firstFixPending = false
-                cl.desiredAccuracy = profile.desiredAccuracy
+                switch mode {
+                case .foreground:
+                    cl.desiredAccuracy = profile.foregroundAccuracy
+                case .background:
+                    cl.desiredAccuracy = profile.backgroundAccuracy
+                case .significantChange, .off:
+                    cl.desiredAccuracy = profile.foregroundAccuracy
+                }
                 cl.distanceFilter = profile.distanceFilter
             }
         }
