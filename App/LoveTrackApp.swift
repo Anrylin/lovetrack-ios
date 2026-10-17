@@ -51,6 +51,10 @@ final class AppSession: ObservableObject {
     @Published var isReady: Bool = false
     @Published var isPaired: Bool = false
     @Published var currentRelationship: Relationship?
+    /// 是否已登录（LoveLink 账号体系）；false → 显示 AuthScreen
+    @Published var isLoggedIn: Bool = false
+    /// 控制「配对」弹层显示（由主页按钮触发）
+    @Published var showPairSheet: Bool = false
 
     private var locationTask: Task<Void, Never>?
     private var partnerLocationTask: Task<Void, Never>?
@@ -72,6 +76,7 @@ final class AppSession: ObservableObject {
         self.guardSettings = GuardSettings()
         // 监听 WebSocket 推送的 pair_success：对方加入 → 自动跳转主页
         if let http = sync as? HTTPRealtimeSyncService {
+            self.isLoggedIn = http.isLoggedIn
             http.onPairSuccess = { [weak self] inviteeId in
                 Task { @MainActor in
                     guard let self else { return }
@@ -110,6 +115,31 @@ final class AppSession: ObservableObject {
             currentRelationship = rel
         }
         Log.info("AppSession", "completePairing called, isPaired=\(isPaired)")
+    }
+
+    /// 登录/注册成功后调用：写入用户信息并进入主页
+    @MainActor
+    func markLoggedIn(_ result: HTTPRealtimeSyncService.AuthResult) {
+        isLoggedIn = true
+        currentUser = User(id: result.userId, displayName: result.nickname)
+        if let pid = result.partnerId, !pid.isEmpty {
+            relationshipStore.partner = User(id: pid, displayName: result.partnerName ?? "伴侣")
+            relationshipStore.isPaired = result.paired
+        }
+        isPaired = result.paired
+        Log.info("AppSession", "已登录：\(result.nickname)（\(result.userId)）已配对=\(result.paired) 配对码=\(result.coupleCode ?? "-")")
+    }
+
+    /// 退出登录
+    @MainActor
+    func signOutAccount() {
+        (realtime as? HTTPRealtimeSyncService)?.signOut()
+        isLoggedIn = false
+        isPaired = false
+        relationshipStore.isPaired = false
+        relationshipStore.partner = nil
+        relationshipStore.relationship = nil
+        Log.info("AppSession", "已退出登录")
     }
 
     /// 主动向后端确认「我是否已配对」并恢复完整状态，返回最新结果。
@@ -333,30 +363,19 @@ struct RootView: View {
     @EnvironmentObject var store: RelationshipStore
 
     var body: some View {
-        // DEBUG 编译：默认走 PairScreen（用户能看见配对页）
-        //   输任意 6 位数字 + 绑定 → DevMock 触发配对成功进主页
-        //   设环境变量 LOVETRACK_SKIP_PAIR=1 → 跳过配对直接进主页
-        // Release 编译：必须走完真配对才能进主页
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["LOVETRACK_SKIP_PAIR"] == "1" {
-            mainTabs
-                .onAppear {
-                    DevMock.bootstrapIfNeeded(session: session, store: store)
-                }
-        } else {
-            if session.isPaired || store.isPaired {
-                mainTabs
+        Group {
+            if !session.isLoggedIn {
+                // 未登录：先注册 / 登录（LoveLink 账号体系）
+                AuthScreen()
             } else {
-                PairScreen()
+                // 已登录：直接进主页。配对不再拦截启动流程，
+                // 改由主页顶部的「配对」按钮触发（session.showPairSheet）。
+                mainTabs
+                    .sheet(isPresented: $session.showPairSheet) {
+                        PairScreen()
+                    }
             }
         }
-        #else
-        if session.isPaired || store.isPaired {
-            mainTabs
-        } else {
-            PairScreen()
-        }
-        #endif
     }
 
     private var mainTabs: some View {

@@ -408,3 +408,181 @@ public struct PairScreen: View {
         return error.localizedDescription
     }
 }
+
+// MARK: - 登录 / 注册（LoveLink 账号体系）
+
+/// 未登录时显示：注册或登录，成功后直接进入主页（配对不再拦截启动流程）。
+struct AuthScreen: View {
+    @EnvironmentObject var session: AppSession
+
+    @State private var mode: Mode = .login
+    @State private var account = ""
+    @State private var password = ""
+    @State private var nickname = ""
+    @State private var emoji = "🐰"
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    enum Mode { case login, register }
+
+    private let emojis = ["🐰", "🐻", "🐱", "🐶", "🦊", "🐼", "🐨", "🐯", "🦁", "🐸"]
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 1.0, green: 0.36, blue: 0.61),
+                    Color(red: 0.55, green: 0.36, blue: 0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 16) {
+                    Spacer(minLength: 36)
+
+                    Text("💕").font(.system(size: 60))
+                    Text("LoveTrack").font(.largeTitle.bold()).foregroundStyle(.white)
+                    Text(mode == .login ? "登录你的账号" : "创建一个新账号")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.85))
+
+                    VStack(spacing: 12) {
+                        TextField("账号（3-32 位字母或数字）", text: $account)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .padding()
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .foregroundStyle(.black)
+
+                        SecureField("密码（至少 6 位）", text: $password)
+                            .padding()
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .foregroundStyle(.black)
+
+                        if mode == .register {
+                            TextField("昵称（TA 看到的名字）", text: $nickname)
+                                .padding()
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .foregroundStyle(.black)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(emojis, id: \.self) { e in
+                                        Button {
+                                            emoji = e
+                                        } label: {
+                                            Text(e)
+                                                .font(.system(size: 24))
+                                                .frame(width: 44, height: 44)
+                                                .background(emoji == e ? Color.white : Color.white.opacity(0.3))
+                                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 6)
+
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.yellow)
+                    }
+
+                    Button {
+                        Task { await submit() }
+                    } label: {
+                        Group {
+                            if isLoading {
+                                ProgressView().tint(Color.purple)
+                            } else {
+                                Text(mode == .login ? "登录" : "注册并开始")
+                                    .font(.headline)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.white)
+                        .foregroundStyle(Color.purple)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .disabled(isLoading || account.count < 3 || password.count < 6)
+
+                    Button(mode == .login ? "没有账号？去注册" : "已有账号？去登录") {
+                        mode = (mode == .login) ? .register : .login
+                        errorMessage = nil
+                    }
+                    .foregroundStyle(.white.opacity(0.85))
+
+                    Text("账号只在你和 TA 之间共享位置；密码加密存储，不会外传")
+                        .font(.caption2)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.6))
+
+                    Spacer(minLength: 30)
+                }
+                .padding(.horizontal, 24)
+            }
+        }
+    }
+
+    @MainActor
+    private func submit() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        guard let http = session.realtime as? HTTPRealtimeSyncService else {
+            errorMessage = "网络层未初始化"
+            return
+        }
+
+        do {
+            let result: HTTPRealtimeSyncService.AuthResult
+            if mode == .login {
+                result = try await http.login(account: account, password: password)
+            } else {
+                result = try await http.register(
+                    account: account,
+                    password: password,
+                    nickname: nickname.isEmpty ? account : nickname,
+                    emoji: emoji
+                )
+            }
+            session.markLoggedIn(result)
+            Log.info("AuthScreen", "\(mode == .login ? "登录" : "注册")成功：\(result.nickname)")
+        } catch {
+            errorMessage = friendly(error)
+            Log.error("AuthScreen", "失败: \(error)")
+        }
+    }
+
+    private func friendly(_ error: Error) -> String {
+        if let e = error as? HTTPRealtimeSyncService.ServiceError {
+            switch e {
+            case let .httpStatus(code, body):
+                switch code {
+                case 401: return "账号或密码不正确"
+                case 409: return "这个账号已经被注册了"
+                case 400: return "账号或密码格式不对（账号 3-32 位，密码至少 6 位）"
+                case 0: return "连不上服务器，检查网络"
+                default: return "服务器返回 \(code)\(body.isEmpty ? "" : "：\(body.prefix(50))")"
+                }
+            case .decoding: return "服务器返回格式异常"
+            case .connectionClosed: return "连接已断开，请重试"
+            }
+        }
+        if let u = error as? URLError {
+            return "网络错误：\(u.localizedDescription)"
+        }
+        return error.localizedDescription
+    }
+}
