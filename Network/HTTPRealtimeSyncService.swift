@@ -98,6 +98,172 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         }
     }
 
+    // MARK: - Account（LoveLink 账号体系）
+
+    /// token 持久化 key（与 Web 端一致）
+    private static let tokenKey = "lovelink.token"
+
+    /// 当前登录 token；nil 表示未登录（只读，写入走 setAuthToken）
+    public var authToken: String? {
+        UserDefaults.standard.string(forKey: Self.tokenKey)
+    }
+
+    private func setAuthToken(_ value: String?) {
+        if let v = value, !v.isEmpty {
+            UserDefaults.standard.set(v, forKey: Self.tokenKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.tokenKey)
+        }
+    }
+
+    public var isLoggedIn: Bool { (authToken?.isEmpty == false) }
+
+    public func signOut() {
+        setAuthToken(nil)
+    }
+
+    public struct AuthResult: Sendable {
+        public let token: String
+        public let userId: String
+        public let account: String
+        public let nickname: String
+        public let emoji: String
+        public let coupleCode: String?
+        public let paired: Bool
+        public let partnerId: String?
+        public let partnerName: String?
+    }
+
+    /// 注册（POST /api/auth/register）
+    @discardableResult
+    public func register(
+        account: String,
+        password: String,
+        nickname: String,
+        emoji: String = "🐰"
+    ) async throws -> AuthResult {
+        try await authCall(path: "api/auth/register", body: [
+            "account": account,
+            "password": password,
+            "nickname": nickname,
+            "emoji": emoji,
+        ])
+    }
+
+    /// 登录（POST /api/auth/login）
+    @discardableResult
+    public func login(account: String, password: String) async throws -> AuthResult {
+        try await authCall(path: "api/auth/login", body: [
+            "account": account,
+            "password": password,
+        ])
+    }
+
+    private func authCall(path: String, body: [String: Any]) async throws -> AuthResult {
+        var req = URLRequest(url: BackendConfig.baseURL.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 15
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        Log.info("LoveLinkAPI", "POST \(req.url?.absoluteString ?? "?")")
+
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw ServiceError.httpStatus(0, "no http response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw ServiceError.httpStatus(http.statusCode, text)
+        }
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let token = json["token"] as? String,
+            let user = json["user"] as? [String: Any],
+            let userId = user["id"] as? String
+        else {
+            throw ServiceError.decoding(NSError(domain: "auth", code: 0))
+        }
+
+        setAuthToken(token)
+
+        let pairing = json["pairing"] as? [String: Any]        let partner = pairing?["partner"] as? [String: Any]
+
+        let result = AuthResult(
+            token: token,
+            userId: userId,
+            account: user["account"] as? String ?? "",
+            nickname: user["nickname"] as? String ?? "",
+            emoji: user["emoji"] as? String ?? "🐰",
+            coupleCode: user["coupleCode"] as? String,
+            paired: (pairing != nil),
+            partnerId: partner?["id"] as? String,
+            partnerName: partner?["nickname"] as? String
+        )
+
+        // 同步内部 userId / partnerKey，供后续 WS 与位置路由使用
+        lock.lock()
+        self.actualPartnerKey = result.partnerId
+        lock.unlock()
+        if let pid = result.partnerId {
+            setPartnerKey(pid)
+        }
+
+        Log.info("LoveLinkAPI", "登录成功 user=\(userId) 昵称=\(result.nickname) 已配对=\(result.paired)")
+        return result
+    }
+
+    /// 带鉴权的 GET
+    func authedGet(path: String) async throws -> [String: Any] {
+        guard let token = authToken else {
+            throw ServiceError.httpStatus(401, "not logged in")
+        }
+        var req = URLRequest(url: BackendConfig.baseURL.appendingPathComponent(path))
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 12
+
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw ServiceError.httpStatus(0, "no http response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw ServiceError.httpStatus(http.statusCode, text)
+        }
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    /// 带鉴权的 POST/PUT
+    @discardableResult
+    func authedJSON(
+        path: String,
+        method: String = "POST",
+        body: [String: Any]? = nil
+    ) async throws -> [String: Any] {
+        guard let token = authToken else {
+            throw ServiceError.httpStatus(401, "not logged in")
+        }
+        var req = URLRequest(url: BackendConfig.baseURL.appendingPathComponent(path))
+        req.httpMethod = method
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 12
+        if let body = body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw ServiceError.httpStatus(0, "no http response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw ServiceError.httpStatus(http.statusCode, text)
+        }
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
     // MARK: - Pairing
 
     /// 创建邀请码（调后端 POST /bind）
