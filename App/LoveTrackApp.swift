@@ -198,6 +198,7 @@ final class AppSession: ObservableObject {
                     sessionId: event.sessionId
                 )
                 try? await self.realtime.uploadPoint(point)
+                UsageStats.countReport()
                 self.lastLocation = event.location
                 // 🐛 Bug 排查:userId=自己,坐标=GPS,标记为"我"上传。
                 Log.info("AppSession", "📤 我上传: userId=\(point.userId) lat=\(point.lat) lon=\(point.lon) mode=\(event.mode.rawValue) hp=\(Int(point.horizontalAccuracy))m")

@@ -1,10 +1,15 @@
 import SwiftUI
 import Foundation
+import Network
+import UIKit
 
 /// 我的 Tab — 个人资料 hero + 守护数据 + 设置 + 会员入口
 public struct ProfileScreen: View {
     @EnvironmentObject var session: AppSession
     @EnvironmentObject var store: RelationshipStore
+
+    @StateObject private var device = DeviceStatusMonitor()
+    @StateObject private var usage = UsageStats()
 
     @State private var showEdit = false
     @State private var editNickname = ""
@@ -24,6 +29,11 @@ public struct ProfileScreen: View {
         }
         .ignoresSafeArea(edges: .bottom)
         .sheet(isPresented: $showEdit) { editSheet }
+        .onAppear {
+            device.refreshBattery()
+            device.refreshStorage()
+            usage.refresh()
+        }
     }
 
     // MARK: - Background
@@ -48,7 +58,8 @@ public struct ProfileScreen: View {
             VStack(spacing: 14) {
                 StatusBar()
                 profileHero
-                statsRow
+                deviceStatusCard
+                usageCard
                 vipCard
                 settingsGroup
                 Color.clear.frame(height: 100)
@@ -148,7 +159,92 @@ public struct ProfileScreen: View {
         .background(Capsule().fill(Color.white.opacity(0.25)))
     }
 
-    // MARK: - Stats row
+    // MARK: - 手机状态 / 使用报告
+
+    private var pairDaysText: String {
+        guard store.isPaired, let rel = store.relationship else { return "—" }
+        return "\(daysTogether(rel))"
+    }
+
+    private var cardShell<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous)
+                    .fill(Theme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous)
+                    .strokeBorder(Theme.border, lineWidth: 1.5)
+            )
+            .softShadow(Theme.shadowSm)
+    }
+
+    private var deviceStatusCard: some View {
+        cardShell {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "iphone")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.primary)
+                    Text("手机状态")
+                        .font(.system(size: Theme.fontMd, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                    Spacer()
+                    Text("本机实时")
+                        .font(.system(size: 10))
+                        .foregroundColor(Theme.textSubtle)
+                }
+                HStack(spacing: 10) {
+                    statItem(
+                        systemIcon: device.charging ? "battery.100.bolt" : "battery.75",
+                        value: device.battery >= 0 ? "\(device.battery)%" : "—",
+                        label: device.charging ? "充电中" : "电量"
+                    )
+                    statItem(systemIcon: "wifi", value: device.network, label: "网络")
+                    statItem(
+                        systemIcon: "internaldrive",
+                        value: device.storageTotalGB > 0
+                            ? String(format: "%.1fG", device.storageFreeGB)
+                            : "—",
+                        label: "可用空间"
+                    )
+                    statItem(
+                        systemIcon: "bolt.slash",
+                        value: device.lowPower ? "开启" : "关闭",
+                        label: "低电量"
+                    )
+                }
+            }
+        }
+    }
+
+    private var usageCard: some View {
+        cardShell {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.violet)
+                    Text("今日使用")
+                        .font(.system(size: Theme.fontMd, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                    Spacer()
+                    Text("仅统计本 App")
+                        .font(.system(size: 10))
+                        .foregroundColor(Theme.textSubtle)
+                }
+                HStack(spacing: 10) {
+                    statItem(systemIcon: "clock.fill", value: "\(usage.todayMinutes)", label: "分钟")
+                    statItem(systemIcon: "arrow.up.app", value: "\(usage.launchCount)", label: "启动")
+                    statItem(systemIcon: "location.fill", value: "\(usage.reportCount)", label: "位置上报")
+                    statItem(systemIcon: "heart.fill", value: pairDaysText, label: "配对天数")
+                }
+            }
+        }
+    }
+
+    // MARK: - Stats row（旧版假数据，已由上面两张卡取代）
 
     private var statsRow: some View {
         HStack(spacing: 10) {
@@ -420,6 +516,159 @@ public struct ProfileScreen: View {
             return "网络错误：\(u.localizedDescription)"
         }
         return error.localizedDescription
+    }
+}
+
+// MARK: - 手机状态采集（本机）
+
+/// 采集电量、充电、低电量模式、网络、存储 —— 全部是系统真实值。
+/// 对方的手机状态需要上报后端再由服务端推送，这里只负责本机。
+final class DeviceStatusMonitor: ObservableObject {
+    @Published var battery: Int = -1        // -1 表示系统未提供（模拟器常见）
+    @Published var charging = false
+    @Published var lowPower = false
+    @Published var network = "检测中"
+    @Published var storageFreeGB: Double = 0
+    @Published var storageTotalGB: Double = 0
+
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "lovetrack.device.status")
+    private var timer: Timer?
+
+    init() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        refreshBattery()
+        refreshStorage()
+        startNetworkMonitor()
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.refreshBattery()
+            self?.refreshStorage()
+        }
+    }
+
+    deinit {
+        monitor.cancel()
+        timer?.invalidate()
+    }
+
+    func refreshBattery() {
+        let level = UIDevice.current.batteryLevel
+        let pct = level < 0 ? -1 : Int((level * 100).rounded())
+        let state = UIDevice.current.batteryState
+        let isCharging = (state == .charging || state == .full)
+        let low = ProcessInfo.processInfo.isLowPowerModeEnabled
+        DispatchQueue.main.async { [weak self] in
+            self?.battery = pct
+            self?.charging = isCharging
+            self?.lowPower = low
+        }
+    }
+
+    func refreshStorage() {
+        guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
+              let free = attrs[.systemFreeSize] as? NSNumber,
+              let total = attrs[.systemSize] as? NSNumber else { return }
+        let freeGB = Double(free.int64Value) / 1_073_741_824.0
+        let totalGB = Double(total.int64Value) / 1_073_741_824.0
+        DispatchQueue.main.async { [weak self] in
+            self?.storageFreeGB = freeGB
+            self?.storageTotalGB = totalGB
+        }
+    }
+
+    private func startNetworkMonitor() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            let label: String
+            if path.status != .satisfied {
+                label = "离线"
+            } else if path.usesInterfaceType(.wifi) {
+                label = "Wi-Fi"
+            } else if path.usesInterfaceType(.cellular) {
+                label = "蜂窝"
+            } else if path.usesInterfaceType(.wiredEthernet) {
+                label = "有线"
+            } else {
+                label = "其他"
+            }
+            DispatchQueue.main.async { self?.network = label }
+        }
+        monitor.start(queue: queue)
+    }
+}
+
+// MARK: - App 使用统计
+
+/// 只能统计 App 自身：今日前台时长、启动次数、位置上报次数。
+/// iOS 的系统级「屏幕使用时间 / App 使用排行」需要 Apple 特批的
+/// com.apple.developer.family-controls 权限，个人签名版本拿不到。
+final class UsageStats: ObservableObject {
+    @Published var todayMinutes = 0
+    @Published var launchCount = 0
+    @Published var reportCount = 0
+
+    private enum Key {
+        static let day = "usage.day"
+        static let minutes = "usage.minutes"
+        static let launches = "usage.launches"
+        static let reports = "usage.reports"
+    }
+
+    private var tickStart = Date()
+    private var timer: Timer?
+
+    init() {
+        rolloverIfNewDay()
+        let d = UserDefaults.standard
+        d.set(d.integer(forKey: Key.launches) + 1, forKey: Key.launches)
+        launchCount = d.integer(forKey: Key.launches)
+        reportCount = d.integer(forKey: Key.reports)
+        todayMinutes = d.integer(forKey: Key.minutes)
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.flushMinutes()
+        }
+    }
+
+    deinit {
+        timer?.invalidate()
+    }
+
+    /// 每分钟把已过去的整分钟累加进今日总量
+    func flushMinutes() {
+        let mins = Int(Date().timeIntervalSince(tickStart) / 60)
+        guard mins > 0 else { return }
+        tickStart = Date()
+        let d = UserDefaults.standard
+        let total = d.integer(forKey: Key.minutes) + mins
+        d.set(total, forKey: Key.minutes)
+        DispatchQueue.main.async { [weak self] in self?.todayMinutes = total }
+    }
+
+    /// 位置上报一次就 +1（供 AppSession 调用）
+    static func countReport() {
+        let d = UserDefaults.standard
+        d.set(d.integer(forKey: Key.reports) + 1, forKey: Key.reports)
+    }
+
+    /// 切回前台时刷新（同时处理跨天重置）
+    func refresh() {
+        rolloverIfNewDay()
+        let d = UserDefaults.standard
+        todayMinutes = d.integer(forKey: Key.minutes)
+        launchCount = d.integer(forKey: Key.launches)
+        reportCount = d.integer(forKey: Key.reports)
+    }
+
+    private func rolloverIfNewDay() {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        let today = fmt.string(from: Date())
+        let d = UserDefaults.standard
+        if d.string(forKey: Key.day) != today {
+            d.set(today, forKey: Key.day)
+            d.set(0, forKey: Key.minutes)
+            d.set(0, forKey: Key.launches)
+            d.set(0, forKey: Key.reports)
+        }
     }
 }
 
