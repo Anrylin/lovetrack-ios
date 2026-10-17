@@ -320,11 +320,17 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
 
     /// 用邀请码绑定（调后端 POST /pair）
     public func acceptPairInvite(code: String, invitee: User) async throws -> Relationship {
-        var req = URLRequest(url: BackendConfig.baseURL.appendingPathComponent("pair"))
+        guard let token = authToken else {
+            throw ServiceError.httpStatus(401, "未登录，请先注册或登录")
+        }
+        var req = URLRequest(url: BackendConfig.baseURL.appendingPathComponent("api/pair/request"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 12
 
-        let body: [String: Any] = ["code": code, "userId": invitee.id]
+        // LoveLink 是「请求 → 对方同意」两步，kind 固定 couple
+        let body: [String: Any] = ["code": code, "kind": "couple"]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, resp) = try await session.data(for: req)
@@ -332,33 +338,48 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
             throw ServiceError.httpStatus(0, "no http response")
         }
         guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw ServiceError.httpStatus(http.statusCode, body)
+            let errBody = String(data: data, encoding: .utf8) ?? ""
+            throw ServiceError.httpStatus(http.statusCode, errBody)
         }
 
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let inviterId = json["inviterId"] as? String else {
-            throw ServiceError.decoding(NSError(domain: "decode", code: 0))
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+
+        // 情况 A：双方互相申请 → 后端直接配对成功
+        if let pairing = json["pairing"] as? [String: Any],
+           let partner = pairing["partner"] as? [String: Any],
+           let pid = partner["id"] as? String, !pid.isEmpty {
+            let rel = Relationship(
+                id: pairing["id"] as? String ?? "rel_\(pid)",
+                userA: invitee.id,
+                userB: pid,
+                status: .active,
+                pairedAt: Date()
+            )
+            lock.lock()
+            relationship = rel
+            users[pid] = User(id: pid, displayName: partner["nickname"] as? String ?? "伴侣")
+            lock.unlock()
+            setPartnerKey(pid)
+            Log.info("HTTPRealtime", "配对成功（互相申请）：partnerKey=\(pid)")
+            onPairSuccess?(pid)
+            await connectWebSocket()
+            return rel
         }
 
-        let rel = Relationship(
-            id: "rel_\(inviterId)_\(invitee.id)",
-            userA: inviterId,
-            userB: invitee.id,
-            status: .active,
+        // 情况 B：请求已发出，等对方在 App 里同意（PairScreen 轮询兜底）
+        let pendingRel = Relationship(
+            id: "pending_\(invitee.id)_\(code)",
+            userA: invitee.id,
+            userB: "",
+            status: .pending,
             pairedAt: Date()
         )
-
         lock.lock()
-        relationship = rel
-        users[inviterId] = User(id: inviterId, displayName: "伴侣")
-        // 邀请方是 inviterId，我们（invitee）的 partnerKey 就是 inviterId
-        actualPartnerKey = inviterId
+        relationship = pendingRel
         lock.unlock()
-
-        Log.info("HTTPRealtime", "pair OK: \(inviterId) ↔ \(invitee.id), partnerKey=\(inviterId)")
+        Log.info("HTTPRealtime", "配对请求已发送，等待对方同意：code=\(code)")
         await connectWebSocket()
-        return rel
+        return pendingRel
     }
 
     public func dissolveRelationship(id: String) async throws {
@@ -511,71 +532,55 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     /// GET /me?userId=xxx → { userId, relationship, partner, lastKnownPartnerLocation, myLastLocation, isOnline }
     /// 返回 nil 表示当前未 paired。
     public func fetchMyState() async throws -> MyState? {
-        var comps = URLComponents(url: BackendConfig.baseURL, resolvingAgainstBaseURL: false)!
-        comps.path = "/me"
-        comps.queryItems = [URLQueryItem(name: "userId", value: userId)]
-        guard let url = comps.url else { return nil }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.timeoutInterval = 5
+        guard isLoggedIn else {
+            Log.info("HTTPRealtime", "fetchMyState: 未登录")
+            return nil
+        }
 
-        Log.info("HTTPRealtime", "GET \(url.absoluteString)")
-        let (data, resp) = try await session.data(for: req)
-        guard let http = resp as? HTTPURLResponse else {
-            Log.warn("HTTPRealtime", "fetchMyState: no http response")
+        // 一次拿到：配对状态 + 对方最新位置 + 距离
+        let dash = try await authedGet(path: "api/dashboard")
+
+        guard let pairing = dash["pairing"] as? [String: Any],
+              let partner = pairing["partner"] as? [String: Any],
+              let partnerId = partner["id"] as? String,
+              !partnerId.isEmpty else {
+            Log.info("HTTPRealtime", "fetchMyState: 尚未配对")
             return nil
         }
-        guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            Log.warn("HTTPRealtime", "fetchMyState: HTTP \(http.statusCode) \(body)")
-            throw ServiceError.httpStatus(http.statusCode, body)
-        }
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            Log.warn("HTTPRealtime", "fetchMyState: bad payload")
-            return nil
-        }
-        let relJson = json["relationship"] as? [String: Any]
-        guard let relJson = relJson,
-              let inviterId = relJson["inviterId"] as? String,
-              let inviteeId = relJson["inviteeId"] as? String,
-              let statusStr = relJson["status"] as? String,
-              statusStr == "active" || statusStr == "paired" else {
-            Log.info("HTTPRealtime", "fetchMyState: not paired")
-            return nil
-        }
-        let partnerId = (inviterId == userId) ? inviteeId : inviterId
+
         let rel = Relationship(
-            id: relJson["id"] as? String ?? "rel_\(inviterId)_\(inviteeId)",
-            userA: inviterId,
-            userB: inviteeId,
+            id: pairing["id"] as? String ?? "rel_\(partnerId)",
+            userA: userId,
+            userB: partnerId,
             status: .active,
             pairedAt: Date()
         )
 
-        // 解析 partner lastLocation（如果有）
+        // 解析对方最新位置（dashboard.latest.partner.point）
         var partnerLoc: LocationPoint?
-        if let pl = json["lastKnownPartnerLocation"] as? [String: Any],
-           let plat = pl["lat"] as? Double,
-           let plng = pl["lng"] as? Double {
-            let pbatt = pl["battery"] as? Double ?? 1.0
-            let ptsMs = pl["timestamp"] as? TimeInterval ?? Date().timeIntervalSince1970 * 1000
+        if let latest = dash["latest"] as? [String: Any],
+           let p = latest["partner"] as? [String: Any],
+           let point = p["point"] as? [String: Any],
+           let lat = point["lat"] as? Double,
+           let lng = point["lng"] as? Double {
+            let batteryPct = point["battery"] as? Double ?? 100
+            let ts = point["at"] as? TimeInterval ?? Date().timeIntervalSince1970 * 1000
             partnerLoc = LocationPoint(
                 userId: partnerId,
-                lat: plat,
-                lon: plng,
+                lat: lat,
+                lon: lng,
                 altitude: 0, horizontalAccuracy: 0, verticalAccuracy: 0,
                 speed: -1, course: -1,
-                timestamp: Date(timeIntervalSince1970: ptsMs / 1000),
+                timestamp: Date(timeIntervalSince1970: ts / 1000),
                 receivedAt: Date(),
-                battery: BatteryInfo(level: pbatt, isCharging: false, isLowPower: false),
+                battery: BatteryInfo(level: batteryPct / 100.0, isCharging: false, isLowPower: false),
                 source: .gps, sessionId: ""
             )
         }
 
-        Log.info("HTTPRealtime", "fetchMyState: ✅ paired with \(partnerId), hasPartnerLoc=\(partnerLoc != nil)")
-        if let loc = partnerLoc {
-            Log.info("HTTPRealtime", "📍 fetchMyState partnerLoc: userId=\(loc.userId) lat=\(loc.lat) lon=\(loc.lon)")
-        }
+        setPartnerKey(partnerId)
+        let distText = dash["distanceText"] as? String ?? "-"
+        Log.info("HTTPRealtime", "fetchMyState: 已配对 \(partnerId)，有位置=\(partnerLoc != nil)，距离=\(distText)")
         return MyState(relationship: rel, partnerId: partnerId, lastKnownPartnerLocation: partnerLoc)
     }
 

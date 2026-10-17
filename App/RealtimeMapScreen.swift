@@ -66,20 +66,61 @@ public struct RealtimeMapScreen: View {
         }
     }
 
+    /// 对方是否在线：最近 2 分钟内有位置更新（后端 presence 事件接入前的本地判断）
+    private var partnerOnline: Bool {
+        guard let ts = store.lastKnownPartnerLocation?.timestamp else { return false }
+        return Date().timeIntervalSince(ts) < 120
+    }
+
+    /// 未配对时的引导卡片（替代 PartnerHero）
+    private var pairPromptCard: some View {
+        Button {
+            session.showPairSheet = true
+        } label: {
+            VStack(spacing: 10) {
+                Text("🔗").font(.system(size: 40))
+                Text("还没有和 TA 配对")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text("点这里输入 TA 的配对码，\n或把你的码发给 TA")
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                Text("去配对")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 10)
+                    .background(Theme.primary)
+                    .clipShape(Capsule())
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 26)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .softShadow(Theme.shadowMd)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var contentScroll: some View {
         ScrollView {
             VStack(spacing: 14) {
                 StatusBar()
                 GuardBanner(settings: session.guardSettings)
-                PartnerHero(
-                    name: store.partner?.displayName ?? "小月亮",
-                    avatar: "👧🏻",
-                    distanceKm: store.distanceKmToPartner(myLocation: session.lastLocation),
-                    isOnline: true,
-                    deviceModel: "iPhone 15 Pro",
-                    batteryPercent: Int(((store.lastKnownPartnerLocation?.battery?.level ?? 0.78) * 100).rounded()),
-                    networkLabel: "5G · WiFi"
-                )
+                if store.isPaired || session.isPaired {
+                    PartnerHero(
+                        name: store.partner?.displayName ?? "TA",
+                        avatar: "👧🏻",
+                        distanceKm: store.distanceKmToPartner(myLocation: session.lastLocation),
+                        isOnline: partnerOnline,
+                        deviceModel: "iOS",
+                        batteryPercent: store.lastKnownPartnerLocation?.battery.map { Int(($0.level * 100).rounded()) },
+                        networkLabel: partnerOnline ? "实时共享中" : "暂时离线"
+                    )
+                } else {
+                    pairPromptCard
+                }
                 mapSection
                 DistanceCard(
                     locationEnabled: $locationEnabled,
