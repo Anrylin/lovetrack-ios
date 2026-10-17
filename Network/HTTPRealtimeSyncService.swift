@@ -33,6 +33,12 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     /// 配对成功回调（从 WebSocket pair_success 或 HTTP pair 回来）
     public var onPairSuccess: ((String) -> Void)?
 
+    /// 被对方锁定时回调：(锁 id, 理由, 到期时间毫秒)
+    public var onLockReceived: ((String, String, TimeInterval) -> Void)?
+
+    /// 锁被解除时回调
+    public var onLockCleared: (() -> Void)?
+
     // MARK: - Internal state
 
     private let session: URLSession
@@ -278,6 +284,30 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     /// 发送文字消息（POST /api/messages）
     public func sendMessage(_ content: String) async throws {
         try await authedJSON(path: "api/messages", body: ["content": content, "kind": "text"])
+    }
+
+    // MARK: - 远程锁定（只锁 App 界面，不涉及系统锁屏）
+
+    /// 锁定对方的 App（POST /api/lock）
+    public func lockPartner(reason: String, minutes: Int) async throws {
+        try await authedJSON(
+            path: "api/lock",
+            body: ["reason": reason, "minutes": minutes]
+        )
+        Log.info("HTTPRealtime", "已锁定 TA：\(reason) / \(minutes) 分钟")
+    }
+
+    /// 解锁（POST /api/lock/unlock）
+    public func unlockDevice(lockId: String) async throws {
+        try await authedJSON(path: "api/lock/unlock", body: ["id": lockId])
+        Log.info("HTTPRealtime", "已解锁 \(lockId)")
+    }
+
+    /// 我当前是否被锁（GET /api/lock/active）
+    public func fetchActiveLock() async throws -> [String: Any]? {
+        guard isLoggedIn else { return nil }
+        let json = try await authedGet(path: "api/lock/active")
+        return json["lock"] as? [String: Any]
     }
 
     // MARK: - Pairing
@@ -809,6 +839,19 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
 
         case "loc:ack", "status:ack":
             break
+
+        case "lock":
+            let lockObj = msg["lock"] as? [String: Any] ?? [:]
+            if let id = lockObj["id"] as? String,
+               let untilAt = lockObj["untilAt"] as? TimeInterval {
+                let reason = lockObj["reason"] as? String ?? "乖乖听话"
+                Log.info("HTTPRealtime", "🔒 被锁定：\(reason)")
+                onLockReceived?(id, reason, untilAt)
+            }
+
+        case "lock:done":
+            Log.info("HTTPRealtime", "🔓 锁已解除")
+            onLockCleared?()
 
         default:
             Log.warn("HTTPRealtime", "未处理的消息类型: \(type)")

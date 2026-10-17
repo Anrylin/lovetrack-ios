@@ -59,6 +59,15 @@ final class AppSession: ObservableObject {
     @Published var myEmoji: String = "🐰"
     /// 我的账号名（注册时定的，不随昵称变化）
     @Published var myAccount: String = ""
+    /// 当前生效的锁定（被对方锁 App 时非 nil，RootView 用它盖全屏遮罩）
+    @Published var activeLock: LockState?
+
+    /// 锁定状态
+    struct LockState: Equatable {
+        let id: String
+        let reason: String
+        let untilAt: Date
+    }
 
     private var locationTask: Task<Void, Never>?
     private var partnerLocationTask: Task<Void, Never>?
@@ -78,6 +87,27 @@ final class AppSession: ObservableObject {
         self.realtime = sync
         self.relationshipStore = RelationshipStore(me: me, realtime: sync)
         self.guardSettings = GuardSettings()
+
+        // 锁机回调：被对方锁定时弹全屏遮罩（只锁本 App，不涉及系统）
+        if let http = sync as? HTTPRealtimeSyncService {
+            http.onLockReceived = { [weak self] id, reason, untilAt in
+                Task { @MainActor in
+                    self?.activeLock = LockState(
+                        id: id,
+                        reason: reason,
+                        untilAt: Date(timeIntervalSince1970: untilAt / 1000)
+                    )
+                    Log.info("AppSession", "🔒 收到锁定：\(reason)")
+                }
+            }
+            http.onLockCleared = { [weak self] in
+                Task { @MainActor in
+                    self?.activeLock = nil
+                    Log.info("AppSession", "🔓 锁定已解除")
+                }
+            }
+        }
+
         // 监听 WebSocket 推送的 pair_success：对方加入 → 自动跳转主页
         if let http = sync as? HTTPRealtimeSyncService {
             self.isLoggedIn = http.isLoggedIn
@@ -145,7 +175,50 @@ final class AppSession: ObservableObject {
         relationshipStore.isPaired = false
         relationshipStore.partner = nil
         relationshipStore.relationship = nil
+        activeLock = nil
         Log.info("AppSession", "已退出登录")
+    }
+
+    /// 答对题后解锁（通知后端，让双方状态一致）
+    @MainActor
+    func unlockCurrentLock() async {
+        guard let lock = activeLock else { return }
+        guard let http = realtime as? HTTPRealtimeSyncService else {
+            activeLock = nil
+            return
+        }
+        do {
+            try await http.unlockDevice(lockId: lock.id)
+            activeLock = nil
+            Log.info("AppSession", "已解锁 \(lock.id)")
+        } catch {
+            // 网络失败也先在本地解除，避免用户被永久困住
+            activeLock = nil
+            Log.warn("AppSession", "解锁请求失败，已在本地解除：\(error.localizedDescription)")
+        }
+    }
+
+    /// 启动时检查自己是否处于被锁状态（App 被杀掉重开后仍要恢复遮罩）
+    @MainActor
+    func refreshActiveLock() async {
+        guard let http = realtime as? HTTPRealtimeSyncService, http.isLoggedIn else { return }
+        do {
+            guard let obj = try await http.fetchActiveLock() else {
+                activeLock = nil
+                return
+            }
+            if let id = obj["id"] as? String,
+               let untilAt = obj["untilAt"] as? TimeInterval {
+                activeLock = LockState(
+                    id: id,
+                    reason: obj["reason"] as? String ?? "乖乖听话",
+                    untilAt: Date(timeIntervalSince1970: untilAt / 1000)
+                )
+                Log.info("AppSession", "恢复锁定状态 \(id)")
+            }
+        } catch {
+            Log.warn("AppSession", "查询锁定状态失败：\(error.localizedDescription)")
+        }
     }
 
     /// 主动向后端确认「我是否已配对」并恢复完整状态，返回最新结果。
@@ -370,17 +443,28 @@ struct RootView: View {
     @EnvironmentObject var store: RelationshipStore
 
     var body: some View {
-        Group {
-            if !session.isLoggedIn {
-                // 未登录：先注册 / 登录（LoveLink 账号体系）
-                AuthScreen()
-            } else {
-                // 已登录：直接进主页。配对不再拦截启动流程，
-                // 改由主页顶部的「配对」按钮触发（session.showPairSheet）。
-                mainTabs
-                    .sheet(isPresented: $session.showPairSheet) {
-                        PairScreen()
-                    }
+        ZStack {
+            Group {
+                if !session.isLoggedIn {
+                    // 未登录：先注册 / 登录（LoveLink 账号体系）
+                    AuthScreen()
+                } else {
+                    // 已登录：直接进主页。配对不再拦截启动流程，
+                    // 改由主页顶部的「配对」按钮触发（session.showPairSheet）。
+                    mainTabs
+                        .sheet(isPresented: $session.showPairSheet) {
+                            PairScreen()
+                        }
+                }
+            }
+
+            // 被对方锁定：全屏遮罩盖住一切（只锁本 App，不涉及系统锁屏）
+            if let lock = session.activeLock {
+                LockOverlay(lock: lock) {
+                    await session.unlockCurrentLock()
+                }
+                .transition(.opacity)
+                .zIndex(999)
             }
         }
     }
@@ -388,6 +472,143 @@ struct RootView: View {
     private var mainTabs: some View {
         // 4 tabs 完整 UI（守护 / 位置 / 消息 / 我的）
         AppTabView()
+    }
+}
+
+// MARK: - 锁定遮罩
+
+/// 被 Ta 锁定时的全屏遮罩。
+/// 说明：这是 App 内的界面遮罩，不是系统锁屏 —— iOS 不允许普通 App 锁设备。
+/// 参照 LinkUp 的做法：显示「手机已被 Ta 锁定」+ 理由 + 倒计时，答对数学题解锁。
+struct LockOverlay: View {
+    let lock: AppSession.LockState
+    let onUnlock: () async -> Void
+
+    @State private var a = Int.random(in: 13...49)
+    @State private var b = Int.random(in: 11...39)
+    @State private var answer = ""
+    @State private var error: String?
+    @State private var now = Date()
+    @State private var working = false
+
+    private var remainSeconds: Int {
+        max(0, Int(lock.untilAt.timeIntervalSince(now)))
+    }
+
+    private var remainText: String {
+        let s = remainSeconds
+        if s <= 0 { return "00:00" }
+        return String(format: "%02d:%02d", s / 60, s % 60)
+    }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.09, blue: 0.20),
+                    Color(red: 0.30, green: 0.12, blue: 0.38)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                Spacer()
+
+                Text("🔒").font(.system(size: 68))
+
+                Text("手机已被 Ta 锁定")
+                    .font(.title2.bold())
+                    .foregroundStyle(.white)
+
+                Text(lock.reason)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+
+                Text(remainText)
+                    .font(.system(size: 42, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(.white)
+
+                Text(remainSeconds <= 0 ? "时间到，可以解锁了" : "答对这道题就能提前解锁")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.6))
+
+                HStack(spacing: 10) {
+                    Text("\(a) + \(b) =")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    TextField("?", text: $answer)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.center)
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .frame(width: 96)
+                        .padding(.vertical, 10)
+                        .background(Color.white)
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.top, 4)
+
+                if let e = error {
+                    Text(e)
+                        .font(.caption)
+                        .foregroundStyle(.yellow)
+                }
+
+                Button {
+                    Task { await submit() }
+                } label: {
+                    Group {
+                        if working {
+                            ProgressView().tint(.black)
+                        } else {
+                            Text("解锁").font(.headline)
+                        }
+                    }
+                    .frame(maxWidth: 200)
+                    .padding(.vertical, 14)
+                    .background(Color.white)
+                    .foregroundStyle(.black)
+                    .clipShape(Capsule())
+                }
+                .disabled(working)
+
+                Text("这是 App 内的使用限制，不是系统锁屏；\n划掉 App 重开仍会继续锁定。")
+                    .font(.caption2)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .padding(.horizontal, 32)
+                    .padding(.top, 6)
+
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { t in
+            now = t
+        }
+    }
+
+    @MainActor
+    private func submit() async {
+        guard let n = Int(answer.trimmingCharacters(in: .whitespaces)) else {
+            error = "请输入数字"
+            return
+        }
+        guard n == a + b else {
+            error = "答案不对，再想想～"
+            answer = ""
+            a = Int.random(in: 13...49)
+            b = Int.random(in: 11...39)
+            return
+        }
+        working = true
+        error = nil
+        await onUnlock()
+        working = false
     }
 }
 
