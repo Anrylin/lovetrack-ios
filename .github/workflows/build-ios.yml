@@ -1,10 +1,24 @@
 name: Build iOS IPA (unsigned)
 
-# 手动触发，或 push 到 main 时自动跑
+# 手动触发，或代码相关文件变化时自动跑。
+# 只改文档（README/CHANGELOG）不会触发编译，避免无意义消耗 runner。
 on:
   workflow_dispatch:
   push:
     branches: [main, master]
+    paths:
+      - 'App/**'
+      - 'Location/**'
+      - 'Log/**'
+      - 'Map/**'
+      - 'Models/**'
+      - 'Network/**'
+      - 'Relationship/**'
+      - 'UI/**'
+      - 'Info.plist'
+      - 'Secrets.xcconfig'
+      - 'LoveTrack.xcodeproj/**'
+      - '.github/workflows/build-ios.yml'
 
 jobs:
   build:
