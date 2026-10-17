@@ -187,7 +187,8 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
 
         setAuthToken(token)
 
-        let pairing = json["pairing"] as? [String: Any]        let partner = pairing?["partner"] as? [String: Any]
+        let pairing = json["pairing"] as? [String: Any]
+        let partner = pairing?["partner"] as? [String: Any]
 
         let result = AuthResult(
             token: token,
