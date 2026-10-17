@@ -2,19 +2,11 @@ import SwiftUI
 
 /// 消息 Tab — 互动消息列表 + 快捷发送栏
 public struct MessageScreen: View {
-    @State private var draftText: String = ""
+    @EnvironmentObject var session: AppSession
 
-    private let mockMessages: [ChatMessage] = [
-        .init(time: "22:55", kind: .system, content: "小月亮上线了"),
-        .init(time: "22:30", kind: .theirs(avatar: "月"),
-              content: "想你啦，今晚回来吃饭吗？"),
-        .init(time: "22:31", kind: .theirs(avatar: "月"), content: "戳一戳"),
-        .init(time: "22:35", kind: .mine, content: "在路上了 5 分钟到"),
-        .init(time: "22:40", kind: .location(systemIcon: "mappin.circle.fill", title: "山大科技产业园", subtitle: "距离 1.2 km · 步行 16 分钟")),
-        .init(time: "22:50", kind: .theirs(avatar: "月"),
-              content: "我手机 78%"),
-        .init(time: "22:55", kind: .anniversary(days: 142, name: "在一起")),
-    ]
+    @State private var draftText: String = ""
+    @State private var messages: [ChatMessage] = []
+    @State private var sending = false
 
     public init() {}
 
@@ -28,6 +20,15 @@ public struct MessageScreen: View {
             }
         }
         .ignoresSafeArea(edges: .bottom)
+        .task {
+            await loadMessages()
+            // 5 秒轮询（WebSocket 的 msg 实时推送后续接入）
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                if Task.isCancelled { break }
+                await loadMessages()
+            }
+        }
     }
 
     // MARK: - Background
@@ -101,7 +102,7 @@ public struct MessageScreen: View {
         ScrollView {
             VStack(spacing: 8) {
                 dateDivider("今天 11月22日")
-                ForEach(mockMessages) { msg in
+                ForEach(messages) { msg in
                     messageRow(msg)
                 }
             }
@@ -336,7 +337,9 @@ public struct MessageScreen: View {
                         .strokeBorder(Theme.border, lineWidth: 1)
                 )
 
-                Button {} label: {
+                Button {
+                    Task { await send() }
+                } label: {
                     Image(systemName: "paperplane.fill")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white)
@@ -364,12 +367,81 @@ public struct MessageScreen: View {
             alignment: .top
         )
     }
+
+    // MARK: - 真实消息（LoveLink /api/messages）
+
+    @MainActor
+    private func loadMessages() async {
+        guard let http = session.realtime as? HTTPRealtimeSyncService else { return }
+        do {
+            let json = try await http.authedGet(path: "api/messages?limit=80")
+            let list = (json["messages"] as? [[String: Any]]) ?? []
+            let myId = session.currentUser.id
+            var mapped: [ChatMessage] = []
+            mapped.reserveCapacity(list.count)
+
+            for m in list {
+                let id = m["id"] as? String ?? UUID().uuidString
+                let content = m["content"] as? String ?? ""
+                let kind = m["kind"] as? String ?? "text"
+                let from = m["from"] as? String ?? ""
+                let at = m["createdAt"] as? TimeInterval ?? Date().timeIntervalSince1970 * 1000
+                let timeText = Self.timeFormatter.string(from: Date(timeIntervalSince1970: at / 1000))
+                let mine = (from == myId)
+
+                switch kind {
+                case "system":
+                    mapped.append(.init(time: timeText, kind: .system, content: content, id: id))
+                case "poke":
+                    mapped.append(.init(time: timeText,
+                                        kind: mine ? .mine : .theirs(avatar: "👧🏻"),
+                                        content: "戳一戳",
+                                        id: id))
+                default:
+                    mapped.append(.init(time: timeText,
+                                        kind: mine ? .mine : .theirs(avatar: "👧🏻"),
+                                        content: content,
+                                        id: id))
+                }
+            }
+            messages = mapped
+        } catch {
+            Log.warn("MessageScreen", "加载消息失败：\(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    private func send() async {
+        let text = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        guard let http = session.realtime as? HTTPRealtimeSyncService else { return }
+
+        sending = true
+        defer { sending = false }
+
+        do {
+            try await http.sendMessage(text)
+            draftText = ""
+            await loadMessages()
+            Log.info("MessageScreen", "已发送：\(text.prefix(20))")
+        } catch {
+            Log.error("MessageScreen", "发送失败：\(error)")
+        }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 }
 
 public struct ChatMessage: Identifiable {
-    public let id = UUID()
+    public let id: String
     public let time: String
     public let kind: Kind
+    /// 真正的消息正文（原来 content 是写死返回空串的计算属性，气泡一直是空的）
+    public let text: String
 
     public enum Kind {
         case system
@@ -379,11 +451,13 @@ public struct ChatMessage: Identifiable {
         case anniversary(days: Int, name: String)
     }
 
-    public var content: String { "" }
+    public var content: String { text }
 
-    public init(time: String, kind: Kind, content: String = "") {
+    public init(time: String, kind: Kind, content: String = "", id: String = UUID().uuidString) {
+        self.id = id
         self.time = time
         self.kind = kind
+        self.text = content
     }
 }
 

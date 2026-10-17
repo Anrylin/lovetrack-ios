@@ -275,6 +275,11 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         Log.info("HTTPRealtime", "资料已更新：\(nickname) \(emoji)")
     }
 
+    /// 发送文字消息（POST /api/messages）
+    public func sendMessage(_ content: String) async throws {
+        try await authedJSON(path: "api/messages", body: ["content": content, "kind": "text"])
+    }
+
     // MARK: - Pairing
 
     /// 创建邀请码（调后端 POST /bind）
