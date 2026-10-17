@@ -8,6 +8,28 @@
 
 ---
 
+## [v0.1.0-ai.3] — 2026-10-17
+
+### 变更
+
+- **CI 工作流增加 `paths` 过滤**：只有代码与工程文件（`App/**`、`Network/**`、`LoveTrack.xcodeproj/**` 等）变化才自动编译；只改文档（README / CHANGELOG / NOTICE）不再触发构建，避免无意义的 runner 消耗。
+- 仓库元信息补充：description 标明「AI 修改版 · 基于 2000lla/lovetrack」，新增 topics（`ios`、`swiftui`、`mapkit`、`location-tracking`、`couple-app`、`ai-modified`、`github-actions`）。
+
+### 文档
+
+- **新增 `README.md`**（之前缺失，GitHub 首页是空的）：包含来源归属、授权状况说明、AI 修改声明与可靠性边界、改动清单、使用方法、已知限制。
+- **新增 `NOTICE.md`**：正式的版权与来源声明——原项目无 LICENSE，按「保留所有权利」处理，仅个人学习自用。
+- **新增 `CHANGELOG.md`**（本文件）：此后每次改动都在此记录。
+- `.gitignore` 补充 `node_modules/`、`.npmrc`、`package-lock.json`。
+- 清理仓库中的 `.init` 占位文件、`.npmrc` 本地配置、`package-lock.json`。
+
+### 验证
+
+- run #5（含新 workflow）编译成功。
+- 本次提交**只改文档**，用于验证 `paths` 过滤：预期不产生新的构建记录。
+
+---
+
 ## [v0.1.0-ai.2] — 2026-10-17
 
 ### 修复
