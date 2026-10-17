@@ -166,7 +166,7 @@ public struct ProfileScreen: View {
         return "\(daysTogether(rel))"
     }
 
-    private var cardShell<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    private func cardShell<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
             .padding(16)
             .background(
