@@ -120,34 +120,135 @@ public final class TrackPlaybackViewModel: ObservableObject {
         self.sync = sync
     }
 
+    /// 日期格式（后端按东八区切天）
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(secondsFromGMT: 8 * 3600)
+        return f
+    }()
+
+    /// 拉取有轨迹的日期（原来这里是凭空编的最近 7 天）
     public func load() async {
-        // 简化：列出最近 7 天
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        availableDates = (0..<7).compactMap { offset -> Date? in
-            cal.date(byAdding: .day, value: -offset, to: today)
+        guard let http = sync as? HTTPRealtimeSyncService, http.isLoggedIn else {
+            availableDates = []
+            await selectDate(Date())
+            return
         }
-        await selectDate(selectedDate)
+        do {
+            let json = try await http.authedGet(path: "api/location/days")
+            let days = (json["days"] as? [String]) ?? []
+            availableDates = days.compactMap { Self.dayFormatter.date(from: $0) }
+            Log.info("TrackPlayback", "有轨迹的天数：\(availableDates.count)（\(days.joined(separator: ","))）")
+
+            if let first = availableDates.first {
+                await selectDate(first)
+            } else {
+                let today = Calendar.current.startOfDay(for: Date())
+                availableDates = [today]
+                await selectDate(today)
+            }
+        } catch {
+            Log.warn("TrackPlayback", "加载轨迹日期失败：\(error.localizedDescription)")
+        }
     }
 
+    /// 拉取某天的真实轨迹点（原来调的是已失效的 fetchTrackSegment + 写死 userId "me"）
     public func selectDate(_ date: Date) async {
         selectedDate = Calendar.current.startOfDay(for: date)
-        let seg = try? await sync.fetchTrackSegment(userId: "me", date: selectedDate)
-        currentSegment = seg
-        polyline = seg?.points.map {
-            CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
-        } ?? []
-        annotations = (seg?.points.first.map { p in
-            MapView.MapItem(
-                id: "start",
-                coordinate: .init(latitude: p.lat, longitude: p.lon),
-                title: "起点",
-                iconSystemName: "flag.circle.fill"
-            )
-        }).map { [$0] } ?? []
-        totalDistanceKm = (seg?.summary.distanceMeters ?? 0) / 1000
-        playheadFraction = 0
-        currentTime = seg?.startedAt ?? selectedDate
+
+        guard let http = sync as? HTTPRealtimeSyncService, http.isLoggedIn else {
+            polyline = []
+            annotations = []
+            currentSegment = nil
+            totalDistanceKm = 0
+            return
+        }
+
+        let dayStr = Self.dayFormatter.string(from: selectedDate)
+        do {
+            let json = try await http.authedGet(path: "api/location/history?day=\(dayStr)")
+            let rows = (json["points"] as? [[String: Any]]) ?? []
+            let uid = json["userId"] as? String ?? ""
+
+            let pts: [LocationPoint] = rows.compactMap { r in
+                guard let lat = r["lat"] as? Double, let lng = r["lng"] as? Double else { return nil }
+                let at = r["at"] as? TimeInterval ?? Date().timeIntervalSince1970 * 1000
+                let batt = r["battery"] as? Double
+                return LocationPoint(
+                    id: r["id"] as? String ?? UUID().uuidString,
+                    userId: uid,
+                    lat: lat,
+                    lon: lng,
+                    horizontalAccuracy: r["accuracy"] as? Double ?? 0,
+                    speed: r["speed"] as? Double,
+                    course: r["heading"] as? Double,
+                    timestamp: Date(timeIntervalSince1970: at / 1000),
+                    battery: batt.map { BatteryInfo(level: $0 / 100.0, isCharging: false, isLowPower: false) },
+                    source: .gps,
+                    sessionId: ""
+                )
+            }
+
+            polyline = pts.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
+
+            var anns: [MapView.MapItem] = []
+            if let first = pts.first {
+                anns.append(MapView.MapItem(
+                    id: "start",
+                    coordinate: .init(latitude: first.lat, longitude: first.lon),
+                    title: "起点",
+                    iconSystemName: "flag.circle.fill"
+                ))
+            }
+            if pts.count > 1, let last = pts.last {
+                anns.append(MapView.MapItem(
+                    id: "end",
+                    coordinate: .init(latitude: last.lat, longitude: last.lon),
+                    title: "终点",
+                    iconSystemName: "flag.checkered.circle.fill"
+                ))
+            }
+            annotations = anns
+
+            // 轨迹总长（相邻点累加）
+            var dist: Double = 0
+            if pts.count > 1 {
+                for i in 1..<pts.count {
+                    let a = CLLocation(latitude: pts[i - 1].lat, longitude: pts[i - 1].lon)
+                    let b = CLLocation(latitude: pts[i].lat, longitude: pts[i].lon)
+                    dist += a.distance(from: b)
+                }
+            }
+            totalDistanceKm = dist / 1000
+
+            if let first = pts.first, let last = pts.last {
+                currentSegment = TrackSegment(
+                    userId: uid,
+                    startedAt: first.timestamp,
+                    endedAt: last.timestamp,
+                    points: pts,
+                    summary: TrackSegment.Summary(
+                        distanceMeters: dist,
+                        topSpeed: pts.compactMap { $0.speed }.max() ?? 0,
+                        avgSpeed: dist / Double(max(1, pts.count)),
+                        polylineEncoded: ""
+                    )
+                )
+                currentTime = first.timestamp
+            } else {
+                currentSegment = nil
+                currentTime = selectedDate
+            }
+            playheadFraction = 0
+            Log.info("TrackPlayback", "\(dayStr) 轨迹 \(pts.count) 个点，总长 \(String(format: "%.2f", totalDistanceKm)) km")
+        } catch {
+            Log.warn("TrackPlayback", "加载 \(dayStr) 轨迹失败：\(error.localizedDescription)")
+            polyline = []
+            annotations = []
+            currentSegment = nil
+            totalDistanceKm = 0
+        }
     }
 
     public func setPlayhead(fraction: Double) async {

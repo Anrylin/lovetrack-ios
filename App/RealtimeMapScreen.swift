@@ -15,6 +15,7 @@ public struct RealtimeMapScreen: View {
         let raw = UserDefaults.standard.string(forKey: "map.style") ?? ""
         return MapKitView.MapStyleOption(rawValue: raw) ?? .standard
     }()
+    @State private var showTracks = false
     @State private var showLockSheet = false
     @State private var lockReason = ""
     @State private var lockMinutes = 30
@@ -31,6 +32,9 @@ public struct RealtimeMapScreen: View {
         }
         .ignoresSafeArea(.container, edges: .bottom)
         .sheet(isPresented: $showLockSheet) { lockSheet }
+        .sheet(isPresented: $showTracks) {
+            TrackSheet(realtime: session.realtime) { showTracks = false }
+        }
     }
 
     // MARK: - Layers
@@ -180,6 +184,31 @@ public struct RealtimeMapScreen: View {
         }
     }
 
+    /// 历史轨迹入口
+    private var trackButton: some View {
+        Button {
+            showTracks = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                Text("查看历史轨迹")
+                    .font(.system(size: Theme.fontSm, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .foregroundStyle(Theme.violet)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Theme.violet.opacity(0.35), lineWidth: 1.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private var lockSheet: some View {
         NavigationStack {
             Form {
@@ -273,6 +302,7 @@ public struct RealtimeMapScreen: View {
                 if store.isPaired || session.isPaired {
                     lockButton
                     shotButton
+                    trackButton
                 }
                 QuickCards { kind in
                     showToast("打开「\(kind.title)」", icon: kind.systemIcon)
@@ -416,6 +446,32 @@ public struct RealtimeMapScreen: View {
                 toastMessage = nil
                 toastIcon = nil
             }
+        }
+    }
+}
+
+// MARK: - 轨迹回放弹层
+
+struct TrackSheet: View {
+    let onClose: () -> Void
+    @StateObject private var vm: TrackPlaybackViewModel
+
+    init(realtime: RealtimeSyncServiceProtocol, onClose: @escaping () -> Void) {
+        _vm = StateObject(wrappedValue: TrackPlaybackViewModel(sync: realtime))
+        self.onClose = onClose
+    }
+
+    var body: some View {
+        NavigationStack {
+            TrackPlaybackView(viewModel: vm)
+                .navigationTitle("轨迹回放")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("关闭") { onClose() }
+                    }
+                }
+                .task { await vm.load() }
         }
     }
 }
