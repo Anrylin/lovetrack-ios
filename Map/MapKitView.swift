@@ -210,11 +210,28 @@ public struct MapPerson: Equatable, Identifiable, Hashable {
 
 // MARK: - 百度地图（BMKMapView 封装）
 
+/// 百度地图鉴权回调（BMKMapManager 要求必须传 delegate，否则 start 会返回 false）
+final class BaiduGeneralDelegate: NSObject, BMKGeneralDelegate {
+    func onGetNetworkState(_ iError: Int32) {
+        Log.info("BaiduMap", "网络状态回调：\(iError == 0 ? "✅ 正常" : "❌ 错误码 \(iError)")")
+    }
+
+    func onGetPermissionState(_ iError: Int32) {
+        if iError == 0 {
+            Log.info("BaiduMap", "✅ AK 鉴权通过（底图应可加载）")
+        } else {
+            Log.warn("BaiduMap", "❌ AK 鉴权失败，百度错误码 = \(iError)")
+        }
+    }
+}
+
 /// 百度地图全局管理器（BMKMapManager 必须被强引用，否则会被释放）
 final class BaiduMapManager {
     static let shared = BaiduMapManager()
 
     private let manager = BMKMapManager()
+    /// delegate 必须强引用，否则回调丢失
+    private let delegate = BaiduGeneralDelegate()
     private(set) var started = false
     private(set) var startSucceeded = false
 
@@ -226,8 +243,8 @@ final class BaiduMapManager {
         started = true
         // 延迟到下一轮 runloop：避免在 App.init 期间调用 SDK 导致启动崩溃
         DispatchQueue.main.async {
-            self.startSucceeded = self.manager.start(Self.apiKey, generalDelegate: nil)
-            Log.info("BaiduMap", "BMKMapManager 启动：\(self.startSucceeded ? "✅ 成功" : "❌ 失败")")
+            self.startSucceeded = self.manager.start(Self.apiKey, generalDelegate: self.delegate)
+            Log.info("BaiduMap", "BMKMapManager.start 返回 \(self.startSucceeded)，等待异步鉴权回调…")
         }
     }
 }
