@@ -10,6 +10,8 @@ struct LoveTrackApp: App {
     init() {
         // 必须在 launch 完成前注册 BGTask
         BackgroundKeepAlive.registerBackgroundTasks()
+        // 百度地图：BMKMapView 使用前必须初始化（AK 绑定 Bundle ID com.lovetrack.app）
+        BaiduMapManager.shared.start()
         // MapKit 不需要手动初始化,系统自带
     }
 

@@ -43,6 +43,17 @@ jobs:
           echo "--- scheme 列表 ---"
           xcodebuild -list -project LoveTrack.xcodeproj
 
+      - name: 下载百度地图 SDK
+        run: |
+          set -e
+          echo "下载 BaiduMapKit slim (arm64)…"
+          curl -sSL -o /tmp/baidu.zip "https://github.com/Anrylin/lovetrack-ios/releases/download/sdk-baidumap-7.2.0/BaiduMapKit-slim-arm64.zip"
+          mkdir -p Frameworks
+          unzip -q -o /tmp/baidu.zip -d Frameworks
+          echo "--- Frameworks 内容 ---"
+          ls -la Frameworks
+          du -sh Frameworks
+
       - name: 编译 Release（跳过签名）
         run: |
           set -o pipefail
