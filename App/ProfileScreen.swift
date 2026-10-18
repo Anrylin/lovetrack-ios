@@ -351,7 +351,11 @@ public struct ProfileScreen: View {
         if let n = baidu.networkState, n != 0 {
             return "❌ 网络回调错误 \(n)"
         }
-        return baidu.startSucceeded ? "已启动，等待鉴权回调…" : "start 返回 false"
+        if !baidu.startSucceeded {
+            // 把核对信息直接给出来：AK 长度必须是 32，Bundle ID 必须和百度后台一致
+            return "start=false · BID:\(baidu.actualBundleID) · AK:\(baidu.akLength)位"
+        }
+        return "已启动，等待鉴权回调…"
     }
 
     private var baiduBadgeColor: Color {

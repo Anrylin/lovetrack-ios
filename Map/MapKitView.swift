@@ -248,12 +248,19 @@ final class BaiduMapManager: ObservableObject {
     func start() {
         guard !started else { return }
         started = true
-        // 延迟到下一轮 runloop：避免在 App.init 期间调用 SDK 导致启动崩溃
-        DispatchQueue.main.async {
-            self.startSucceeded = self.manager.start(Self.apiKey, generalDelegate: self.delegate)
-            Log.info("BaiduMap", "BMKMapManager.start 返回 \(self.startSucceeded)，等待异步鉴权回调…")
-        }
+        // 同步调用：百度要求在其 launch 阶段完成初始化，异步延迟可能被判为无效
+        startSucceeded = manager.start(Self.apiKey, generalDelegate: delegate)
+        let bid = Bundle.main.bundleIdentifier ?? "nil"
+        Log.info("BaiduMap", "start=\(startSucceeded) bundleID=\(bid) akLen=\(Self.apiKey.count) delegate=\(delegate)")
     }
+
+    /// 供界面核对：实际读到的 Bundle ID
+    var actualBundleID: String {
+        Bundle.main.bundleIdentifier ?? "nil"
+    }
+
+    /// AK 长度（百度要求 32 位）
+    var akLength: Int { Self.apiKey.count }
 }
 
 /// 百度地图上的一个人
