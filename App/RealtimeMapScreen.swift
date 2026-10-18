@@ -184,6 +184,35 @@ public struct RealtimeMapScreen: View {
         }
     }
 
+    /// 一键 SOS
+    private var sosButton: some View {
+        Button {
+            Task { await sendSOS() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "sos")
+                Text("紧急提醒 TA")
+                    .font(.system(size: Theme.fontSm, weight: .bold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .foregroundStyle(.white)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.90, green: 0.22, blue: 0.26),
+                        Color(red: 0.72, green: 0.10, blue: 0.36)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .softShadow(Theme.shadowSm)
+        }
+        .buttonStyle(.plain)
+    }
+
     /// 历史轨迹入口
     private var trackButton: some View {
         Button {
@@ -247,8 +276,23 @@ public struct RealtimeMapScreen: View {
     }
 
     @MainActor
-    private func doLock() async {
+    private func sendSOS() async {
         guard let http = session.realtime as? HTTPRealtimeSyncService else { return }
+        let lat = session.lastLocation?.coordinate.latitude
+        let lng = session.lastLocation?.coordinate.longitude
+        do {
+            try await http.sendSOS(lat: lat, lng: lng)
+            showToast("已发出紧急提醒", icon: "sos")
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Log.warn("RealtimeMap", "已发送 SOS（含位置=\(lat != nil)）")
+        } catch {
+            showToast("发送失败：\(error.localizedDescription)", icon: "exclamationmark.triangle")
+            Log.error("RealtimeMap", "SOS 发送失败：\(error)")
+        }
+    }
+
+    @MainActor
+    private func doLock() async {        guard let http = session.realtime as? HTTPRealtimeSyncService else { return }
         locking = true
         defer { locking = false }
         do {
@@ -300,6 +344,7 @@ public struct RealtimeMapScreen: View {
                     showToast("已发送给 TA：\(item.name)", icon: "paperplane.fill")
                 }
                 if store.isPaired || session.isPaired {
+                    sosButton
                     lockButton
                     shotButton
                     trackButton

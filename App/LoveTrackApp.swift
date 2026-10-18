@@ -18,6 +18,7 @@ struct LoveTrackApp: App {
             RootView()
                 .environmentObject(session)
                 .environmentObject(session.relationshipStore)
+                .environmentObject(session.guardSettings)
                 .task {
                     await session.bootstrap()
                 }
@@ -65,6 +66,15 @@ final class AppSession: ObservableObject {
     @Published var incomingShotRequest = false
     /// 截图相关提示
     @Published var shotNotice: String?
+    /// 收到对方的紧急提醒
+    @Published var incomingSOS: SOSInfo?
+
+    struct SOSInfo: Equatable {
+        let nickname: String
+        let lat: Double?
+        let lng: Double?
+        let at: Date
+    }
 
     /// 锁定状态
     struct LockState: Equatable {
@@ -120,6 +130,29 @@ final class AppSession: ObservableObject {
                 Task { @MainActor in
                     self?.shotNotice = accept ? "TA 同意了，正在截图…" : "TA 拒绝了这次请求"
                     Log.info("AppSession", "对方回应截图：\(accept ? "同意" : "拒绝")")
+                }
+            }
+            http.onPartnerProfile = { [weak self] user in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let nickname = user["nickname"] as? String ?? "TA"
+                    let pid = (user["id"] as? String) ?? self.relationshipStore.partner?.id ?? ""
+                    self.relationshipStore.partner = User(id: pid, displayName: nickname)
+                    Log.info("AppSession", "对方资料已同步：\(nickname)")
+                }
+            }
+            http.onSOS = { [weak self] msg in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let at = msg["at"] as? TimeInterval ?? Date().timeIntervalSince1970 * 1000
+                    self.incomingSOS = SOSInfo(
+                        nickname: msg["nickname"] as? String ?? "TA",
+                        lat: msg["lat"] as? Double,
+                        lng: msg["lng"] as? Double,
+                        at: Date(timeIntervalSince1970: at / 1000)
+                    )
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    Log.warn("AppSession", "🚨 收到紧急提醒")
                 }
             }
         }
@@ -475,6 +508,11 @@ final class AppSession: ObservableObject {
     }
 
     func handleEnterForeground() {
+        // 省电模式：回到前台要把定位重新拉起来
+        if guardSettings.powerSaving {
+            Log.info("AppSession", "省电模式：回到前台，恢复定位")
+            applyGuardMode()
+        }
         Task { await locationManager.handleAppForeground() }
         // 切回前台立即拉一次对方位置（不等 15s 轮询）
         Task { await pollPartnerLocationOnce() }
@@ -485,6 +523,12 @@ final class AppSession: ObservableObject {
     }
 
     func handleEnterBackground() {
+        // 省电模式：进入后台直接停采，只在前台共享位置
+        if guardSettings.powerSaving {
+            Log.info("AppSession", "省电模式：进入后台，停止定位")
+            locationManager.stop()
+            return
+        }
         Task { await locationManager.handleAppBackground() }
     }
 
@@ -545,6 +589,25 @@ struct RootView: View {
         } message: {
             Text("同意后会截图当前 App 界面发给 TA。一次性授权，不会持续录屏。")
         }
+        .alert("🚨 紧急提醒", isPresented: Binding(
+            get: { session.incomingSOS != nil },
+            set: { if !$0 { session.incomingSOS = nil } }
+        )) {
+            Button("知道了") { session.incomingSOS = nil }
+        } message: {
+            Text(sosMessageText)
+        }
+    }
+
+    private var sosMessageText: String {
+        guard let sos = session.incomingSOS else { return "" }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        let t = f.string(from: sos.at)
+        if sos.lat != nil {
+            return "\(sos.nickname) 在 \(t) 发出紧急提醒，已附带位置，去地图看看 TA 在哪。"
+        }
+        return "\(sos.nickname) 在 \(t) 发出紧急提醒（未附带位置）。"
     }
 
     private var mainTabs: some View {

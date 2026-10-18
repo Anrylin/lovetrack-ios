@@ -45,6 +45,12 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     /// 对方对我请求的回应（true = 同意，随后会收到 image 消息）
     public var onShotResponse: ((Bool) -> Void)?
 
+    /// 对方昵称/头像变更
+    public var onPartnerProfile: (([String: Any]) -> Void)?
+
+    /// 收到紧急提醒（SOS）
+    public var onSOS: (([String: Any]) -> Void)?
+
     // MARK: - Internal state
 
     private let session: URLSession
@@ -343,6 +349,21 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     public func sendImage(_ base64: String) async throws {
         try await authedJSON(path: "api/messages", body: ["content": base64, "kind": "image"])
         Log.info("HTTPRealtime", "📸 截图已上传（\(base64.count / 1024) KB）")
+    }
+
+    /// 一键 SOS（附当前位置）
+    public func sendSOS(lat: Double?, lng: Double?) async throws {
+        guard isConnected, let task = task else {
+            throw ServiceError.connectionClosed
+        }
+        var msg: [String: Any] = ["t": "sos"]
+        if let lat = lat, let lng = lng {
+            msg["lat"] = lat
+            msg["lng"] = lng
+        }
+        let data = try JSONSerialization.data(withJSONObject: msg)
+        try await task.send(.string(String(data: data, encoding: .utf8) ?? "{}"))
+        Log.warn("HTTPRealtime", "🚨 已发出 SOS")
     }
 
     // MARK: - Pairing
@@ -896,6 +917,15 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
             let accept = msg["accept"] as? Bool ?? false
             Log.info("HTTPRealtime", "📸 对方回应截图请求：\(accept ? "同意" : "拒绝")")
             onShotResponse?(accept)
+
+        case "partner:profile":
+            let user = msg["user"] as? [String: Any] ?? [:]
+            Log.info("HTTPRealtime", "对方资料更新：\(user["nickname"] as? String ?? "?") \(user["emoji"] as? String ?? "")")
+            onPartnerProfile?(user)
+
+        case "sos":
+            Log.warn("HTTPRealtime", "🚨 收到紧急提醒")
+            onSOS?(msg)
 
         default:
             Log.warn("HTTPRealtime", "未处理的消息类型: \(type)")

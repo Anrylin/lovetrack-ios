@@ -5,6 +5,7 @@ import UIKit
 public struct GuardScreen: View {
     @EnvironmentObject var session: AppSession
     @EnvironmentObject var store: RelationshipStore
+    @EnvironmentObject var guardSettings: GuardSettings
 
     @State private var guardEnabled: Bool = true
     @State private var notifyOnLowBattery: Bool = true
@@ -412,6 +413,10 @@ public struct GuardScreen: View {
             }
 
             VStack(spacing: 0) {
+                settingRow(systemIcon: "leaf.fill", title: "省电模式", subtitle: "只在打开 App 时共享位置，进后台就停",
+                          color: Color(red: 0.92, green: 0.99, blue: 0.96), tint: Theme.success,
+                          isOn: $guardSettings.powerSaving)
+                Divider().padding(.leading, 50)
                 settingRow(systemIcon: "battery.25", title: "低电提醒", subtitle: "TA 电量 < 20% 时通知你",
                           color: Theme.primarySoft, tint: Theme.primary, isOn: $notifyOnLowBattery)
                 Divider().padding(.leading, 50)

@@ -8,6 +8,48 @@
 
 ---
 
+## [v0.5.0-ai.1] — 2026-10-18
+
+### 新增：历史轨迹回放（接真实数据）
+
+**拆包依据**：LinkUp 有轨迹功能（`查看好友轨迹`，`轨迹` 命中 28 次、`停留` 63 次、`Polyline` 86 次），
+并用 `LocoKit` 框架做轨迹记录与停留点识别。
+
+**本仓库实现**（后端接口本来就有，只是客户端没接）：
+
+- `TrackPlaybackViewModel.load()` 改为调 `GET /api/location/days` 拿**真实有轨迹的日期**
+  （原来是无脑编造「最近 7 天」）。
+- `selectDate()` 改为调 `GET /api/location/history?day=YYYY-MM-DD` 拿**真实轨迹点**
+  （原来是已失效的 `fetchTrackSegment(userId: "me")`，userId 还写死成 `"me"`）。
+- 轨迹总长本地按相邻点累加；起点/终点打 flag 标注；`currentSegment` 供播放头拖动使用。
+- 主页新增「查看历史轨迹」入口，弹出 `TrackPlaybackView`（含日期选择、地图折线、时间轴）。
+- 后端 `/api/location/history` 自带降采样（最多 600 点），避免大数据量卡顿。
+
+### 新增：App 图标
+
+- 生成 1024×1024 PNG（`tools/make-appicon.mjs`，手写 PNG 编码，零依赖）：
+  **粉紫渐变底 + 白色定位针 + 心形镂空**。
+- 新建 `Assets.xcassets/AppIcon.appiconset/`（含 `Contents.json` 单尺寸 1024 声明）。
+- **补建 `PBXResourcesBuildPhase`**：该工程由 XcodeGen 精简生成，原本**完全没有资源打包阶段**，
+  所以 Assets.xcassets 不会被编译。用 `tools/patch-pbxproj-assets.mjs` 注入 5 处：
+  `PBXBuildFile`、`PBXFileReference`、组 `children`、target `buildPhases`、新增 section。
+
+### 验证
+
+- 编译 run #23（轨迹）、#24（图标）通过。
+- 产物检查：`.app` 内出现 `Assets.car`(156 KB)、`AppIcon60x60@2x.png`、`AppIcon76x76@2x~ipad.png`，
+  说明 `actool` 正常参与构建、图标真正生效（此前是白图标）。
+- 轨迹文案 `查看历史轨迹` / `有轨迹的天数` / `轨迹回放` 均在二进制中。
+- 体积：946.9 KB → 1047.4 KB（图标 +100 KB）。
+
+### 已知限制
+
+- 没有「停留点识别」（LinkUp 用 LocoKit 做的：判断某地停留多久、自动标注）。需要的话可以按
+  「相邻点位移 < 50m 且持续 > 5min」的规则在后端算。
+- 轨迹只能看自己的（后端 `/history` 支持 `userId` 参数查伴侣，但 UI 还没给切人入口）。
+
+---
+
 ## [v0.4.0-ai.1] — 2026-10-18
 
 ### 新增：地图样式切换（经典 / 卫星 / 混合）

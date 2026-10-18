@@ -76,10 +76,17 @@ public final class GuardSettings: ObservableObject {
         }
     }
 
+    /// 省电模式：开启后 App 进入后台就停止定位，只在前台共享位置。
+    /// 适合不想耗电、只在打开 App 时被看到的场景。
+    @Published public var powerSaving: Bool {
+        didSet { UserDefaults.standard.set(powerSaving, forKey: Keys.powerSaving) }
+    }
+
     public init() {
         let raw = UserDefaults.standard.string(forKey: Keys.mode) ?? GuardMode.standard.rawValue
         self.mode = GuardMode(rawValue: raw) ?? .standard
         self.isPaused = UserDefaults.standard.bool(forKey: Keys.isPaused)
+        self.powerSaving = UserDefaults.standard.bool(forKey: Keys.powerSaving)
 
         let ts = UserDefaults.standard.double(forKey: Keys.pausedUntil)
         if ts > 0 {
@@ -142,5 +149,6 @@ public final class GuardSettings: ObservableObject {
         static let mode = "lovetrack.guardMode"
         static let isPaused = "lovetrack.isPaused"
         static let pausedUntil = "lovetrack.pausedUntil"
+        static let powerSaving = "lovetrack.powerSaving"
     }
 }
