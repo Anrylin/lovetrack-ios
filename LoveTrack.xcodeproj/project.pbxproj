@@ -412,6 +412,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovetrack.app;
 				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "LoveTrack-Bridging-Header.h";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited)" "$(SRCROOT)/Frameworks";
+				LIBRARY_SEARCH_PATHS = "$(inherited)" "$(SRCROOT)/Frameworks";
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -560,6 +562,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovetrack.app;
 				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "LoveTrack-Bridging-Header.h";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited)" "$(SRCROOT)/Frameworks";
+				LIBRARY_SEARCH_PATHS = "$(inherited)" "$(SRCROOT)/Frameworks";
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = 1;
