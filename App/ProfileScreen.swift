@@ -530,7 +530,7 @@ final class DeviceStatusMonitor: ObservableObject {
     @Published var battery: Int = -1        // -1 表示系统未提供（模拟器常见）
     @Published var charging = false
     @Published var lowPower = false
-    @Published var network = "检测中"
+    @Published var network = "未知"
     @Published var storageFreeGB: Double = 0
     @Published var storageTotalGB: Double = 0
 

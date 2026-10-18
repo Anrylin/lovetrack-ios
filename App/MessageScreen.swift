@@ -298,6 +298,37 @@ public struct MessageScreen: View {
 
     // MARK: - Quick emoji bar
 
+    private struct QuickEmoji: Identifiable {
+        let id: String
+        let icon: String
+        let emoji: String
+    }
+
+    private let quickEmojis: [QuickEmoji] = [
+        .init(id: "wave", icon: "hand.wave.fill", emoji: "👋"),
+        .init(id: "heart", icon: "heart.fill", emoji: "❤️"),
+        .init(id: "food", icon: "fork.knife", emoji: "🍚"),
+        .init(id: "coffee", icon: "cup.and.saucer.fill", emoji: "☕️"),
+        .init(id: "leaf", icon: "leaf.fill", emoji: "🌿"),
+        .init(id: "smile", icon: "face.smiling.fill", emoji: "😊"),
+        .init(id: "gift", icon: "gift.fill", emoji: "🎁"),
+        .init(id: "star", icon: "star.fill", emoji: "⭐️"),
+    ]
+
+    /// 点一下直接把表情发出去
+    @MainActor
+    private func sendQuick(_ emoji: String) async {
+        guard let http = session.realtime as? HTTPRealtimeSyncService else { return }
+        do {
+            try await http.sendMessage(emoji)
+            await loadMessages()
+            UINotificationFeedbackGenerator().notificationOccurred(.light)
+            Log.info("MessageScreen", "快捷表情已发送：\(emoji)")
+        } catch {
+            Log.error("MessageScreen", "快捷表情发送失败：\(error)")
+        }
+    }
+
     private var quickEmojiBar: some View {
         VStack(spacing: 8) {
             HStack {
@@ -313,22 +344,26 @@ public struct MessageScreen: View {
             .padding(.horizontal, 16)
 
             HStack(spacing: 6) {
-                ForEach(["hand.wave.fill", "heart.fill", "fork.knife", "cup.and.saucer.fill",
-                         "leaf.fill", "face.smiling.fill", "gift.fill", "star.fill"],
-                        id: \.self) { icon in
-                    Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(LinearGradient(
-                            colors: [Theme.primary, Theme.violet],
-                            startPoint: .leading, endPoint: .trailing
-                        ))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
-                                .fill(LinearGradient(colors: [Theme.surface2, Theme.violetSoft],
-                                                     startPoint: .top, endPoint: .bottom))
-                        )
+                ForEach(quickEmojis) { item in
+                    Button {
+                        Task { await sendQuick(item.emoji) }
+                    } label: {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(LinearGradient(
+                                colors: [Theme.primary, Theme.violet],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                                    .fill(LinearGradient(colors: [Theme.surface2, Theme.violetSoft],
+                                                         startPoint: .top, endPoint: .bottom))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(item.emoji)
                 }
             }
             .padding(.horizontal, 16)

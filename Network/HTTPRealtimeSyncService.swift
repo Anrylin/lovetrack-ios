@@ -358,7 +358,7 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     public func reportStatus(
         battery: Int?,
         charging: Bool,
-        network: String,
+        network: String?,
         deviceModel: String,
         storageFreeMB: Int,
         lowPower: Bool,
@@ -369,7 +369,6 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         var msg: [String: Any] = [
             "t": "status",
             "charging": charging,
-            "network": network,
             "deviceModel": deviceModel,
             "storageFreeMB": storageFreeMB,
             "lowPower": lowPower,
@@ -377,6 +376,10 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
             "appLaunches": appLaunches,
         ]
         if let b = battery { msg["battery"] = b }
+        // 网络探测未就绪（"未知"/"检测中"）时不带该字段，避免把错误值写进后端
+        if let n = network, !n.isEmpty, n != "未知", n != "检测中" {
+            msg["network"] = n
+        }
         let data = try JSONSerialization.data(withJSONObject: msg)
         try await task.send(.string(String(data: data, encoding: .utf8) ?? "{}"))
     }
