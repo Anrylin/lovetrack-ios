@@ -44,22 +44,6 @@
 		F1E4C98790A547234EF70FBE /* BackendConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70494358B4F87A7B6A38A1F9 /* BackendConfig.swift */; };
 		FB44C8D27D50D8D6EB7CF47B /* DevLogScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 049F2195AA6604A37F9FDC60 /* DevLogScreen.swift */; };
 		A1B2C3D4E5F6000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000002 /* Assets.xcassets */; };
-		BA1DBF000000000000000001 /* BaiduMapAPI_Base.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D00000000000000000001 /* BaiduMapAPI_Base.framework */; };
-		BA1DBF000000000000000002 /* BaiduMapAPI_Map.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D00000000000000000002 /* BaiduMapAPI_Map.framework */; };
-		BA1DBF000000000000000003 /* BaiduMapAPI_Utils.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D00000000000000000003 /* BaiduMapAPI_Utils.framework */; };
-		BA1DBF000000000000000004 /* libzstd_iphoneos_arm64.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D00000000000000000004 /* libzstd_iphoneos_arm64.a */; };
-		BA1DBF000000000000000101 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A1 /* libsqlite3.tbd */; };
-		BA1DBF000000000000000102 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A2 /* libz.tbd */; };
-		BA1DBF000000000000000103 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A3 /* libc++.tbd */; };
-		BA1DBF000000000000000104 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A4 /* SystemConfiguration.framework */; };
-		BA1DBF000000000000000105 /* CoreTelephony.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A5 /* CoreTelephony.framework */; };
-		BA1DBF000000000000000106 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A6 /* QuartzCore.framework */; };
-		BA1DBF000000000000000107 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A7 /* OpenGLES.framework */; };
-		BA1DBF000000000000000108 /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A8 /* CoreText.framework */; };
-		BA1DBF000000000000000109 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000A9 /* Security.framework */; };
-		BA1DBF000000000000000110 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000B1 /* CoreGraphics.framework */; };
-		BA1DBF000000000000000111 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000B2 /* AVFoundation.framework */; };
-		BA1DBF000000000000000112 /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA1D000000000000000000B3 /* CoreMotion.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -102,22 +86,6 @@
 		FEB52B8D48B64713BF962024 /* LogLevel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogLevel.swift; sourceTree = "<group>"; };
 		"TEMP_A0403576-3D25-43A9-8E74-2750EDE87089" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		BA1D00000000000000000001 /* BaiduMapAPI_Base.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "BaiduMapAPI_Base.framework"; path = "Frameworks/BaiduMapAPI_Base.framework"; sourceTree = SOURCE_ROOT; };
-		BA1D00000000000000000002 /* BaiduMapAPI_Map.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "BaiduMapAPI_Map.framework"; path = "Frameworks/BaiduMapAPI_Map.framework"; sourceTree = SOURCE_ROOT; };
-		BA1D00000000000000000003 /* BaiduMapAPI_Utils.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "BaiduMapAPI_Utils.framework"; path = "Frameworks/BaiduMapAPI_Utils.framework"; sourceTree = SOURCE_ROOT; };
-		BA1D00000000000000000004 /* libzstd_iphoneos_arm64.a */ = {isa = PBXFileReference; lastKnownFileType = "archive.ar"; name = "libzstd_iphoneos_arm64.a"; path = "Frameworks/libzstd_iphoneos_arm64.a"; sourceTree = SOURCE_ROOT; };
-		BA1D000000000000000000A1 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libsqlite3.tbd"; path = "libsqlite3.tbd"; sourceTree = SDKROOT; };
-		BA1D000000000000000000A2 /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libz.tbd"; path = "libz.tbd"; sourceTree = SDKROOT; };
-		BA1D000000000000000000A3 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "libc++.tbd"; sourceTree = SDKROOT; };
-		BA1D000000000000000000A4 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "SystemConfiguration.framework"; path = "SystemConfiguration.framework"; sourceTree = SDKROOT; };
-		BA1D000000000000000000A5 /* CoreTelephony.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "CoreTelephony.framework"; path = "CoreTelephony.framework"; sourceTree = SDKROOT; };
-		BA1D000000000000000000A6 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "QuartzCore.framework"; path = "QuartzCore.framework"; sourceTree = SDKROOT; };
-		BA1D000000000000000000A7 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "OpenGLES.framework"; path = "OpenGLES.framework"; sourceTree = SDKROOT; };
-		BA1D000000000000000000A8 /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "CoreText.framework"; path = "CoreText.framework"; sourceTree = SDKROOT; };
-		BA1D000000000000000000A9 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "Security.framework"; path = "Security.framework"; sourceTree = SDKROOT; };
-		BA1D000000000000000000B1 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "CoreGraphics.framework"; path = "CoreGraphics.framework"; sourceTree = SDKROOT; };
-		BA1D000000000000000000B2 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "AVFoundation.framework"; path = "AVFoundation.framework"; sourceTree = SDKROOT; };
-		BA1D000000000000000000B3 /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = "CoreMotion.framework"; path = "CoreMotion.framework"; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -126,22 +94,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				0998FA1105FCF42B22AD9A07 /* CoreLocation.framework in Frameworks */,
-				BA1DBF000000000000000001 /* BaiduMapAPI_Base.framework in Frameworks */,
-				BA1DBF000000000000000002 /* BaiduMapAPI_Map.framework in Frameworks */,
-				BA1DBF000000000000000003 /* BaiduMapAPI_Utils.framework in Frameworks */,
-				BA1DBF000000000000000004 /* libzstd_iphoneos_arm64.a in Frameworks */,
-				BA1DBF000000000000000101 /* libsqlite3.tbd in Frameworks */,
-				BA1DBF000000000000000102 /* libz.tbd in Frameworks */,
-				BA1DBF000000000000000103 /* libc++.tbd in Frameworks */,
-				BA1DBF000000000000000104 /* SystemConfiguration.framework in Frameworks */,
-				BA1DBF000000000000000105 /* CoreTelephony.framework in Frameworks */,
-				BA1DBF000000000000000106 /* QuartzCore.framework in Frameworks */,
-				BA1DBF000000000000000107 /* OpenGLES.framework in Frameworks */,
-				BA1DBF000000000000000108 /* CoreText.framework in Frameworks */,
-				BA1DBF000000000000000109 /* Security.framework in Frameworks */,
-				BA1DBF000000000000000110 /* CoreGraphics.framework in Frameworks */,
-				BA1DBF000000000000000111 /* AVFoundation.framework in Frameworks */,
-				BA1DBF000000000000000112 /* CoreMotion.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -410,10 +362,6 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovetrack.app;
-				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "LoveTrack-Bridging-Header.h";
-				FRAMEWORK_SEARCH_PATHS = "$(inherited)" "$(SRCROOT)/Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(inherited)" "$(SRCROOT)/Frameworks";
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -560,10 +508,6 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovetrack.app;
-				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "LoveTrack-Bridging-Header.h";
-				FRAMEWORK_SEARCH_PATHS = "$(inherited)" "$(SRCROOT)/Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(inherited)" "$(SRCROOT)/Frameworks";
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = 1;

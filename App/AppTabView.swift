@@ -91,7 +91,6 @@ public struct StatisticsScreen: View {
                         weekChart
                         usageCard
                         trackEntry
-                        baiduMapCard
                     } else {
                         notPairedHint
                     }
@@ -310,52 +309,6 @@ public struct StatisticsScreen: View {
             .softShadow(Theme.shadowSm)
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: 百度地图验证区块
-
-    private var baiduCenter: CLLocationCoordinate2D {
-        if let p = store.lastKnownPartnerLocation {
-            return CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)
-        }
-        if let me = session.lastLocation?.coordinate {
-            return me
-        }
-        return CLLocationCoordinate2D(latitude: 39.915, longitude: 116.404)
-    }
-
-    private var baiduPeople: [BaiduMapPerson] {
-        var list: [BaiduMapPerson] = []
-        if let me = session.lastLocation?.coordinate {
-            list.append(BaiduMapPerson(id: "me", name: "我", coordinate: me, isMe: true))
-        }
-        if let p = store.lastKnownPartnerLocation {
-            list.append(BaiduMapPerson(
-                id: "partner",
-                name: store.partner?.displayName ?? "TA",
-                coordinate: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon),
-                isMe: false
-            ))
-        }
-        return list
-    }
-
-    private var baiduMapCard: some View {
-        card {
-            VStack(alignment: .leading, spacing: 10) {
-                header("地图引擎（百度）", icon: "map.fill")
-                BaiduMapView(
-                    center: baiduCenter,
-                    zoomLevel: 15,
-                    people: baiduPeople
-                )
-                .frame(height: 240)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
-                Text("这是百度地图实测区块。若显示正常说明 AK 通过、底图可加载，下一步就用它替换主页地图。")
-                    .font(.system(size: 10))
-                    .foregroundColor(Theme.textMuted)
-            }
-        }
     }
 
     private var notPairedHint: some View {
