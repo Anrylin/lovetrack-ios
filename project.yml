@@ -84,6 +84,8 @@ targets:
       - sdk: CoreGraphics.framework
       - sdk: AVFoundation.framework
       - sdk: CoreMotion.framework
+      # 百度图片解码用到 vImage（vImageBuffer_InitWithCGImage 等）
+      - sdk: Accelerate.framework
     info:
       path: Info.plist
       properties:
