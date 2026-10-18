@@ -50,6 +50,28 @@ public enum GuardMode: String, CaseIterable, Identifiable, Codable, Sendable {
     }
 }
 
+/// 地图引擎
+public enum MapEngine: String, CaseIterable, Identifiable, Sendable {
+    case apple = "apple"
+    case baidu = "baidu"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .apple: return "苹果地图"
+        case .baidu: return "百度地图"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .apple: return "系统自带，全球可用"
+        case .baidu: return "国内底图，加载更快"
+        }
+    }
+}
+
 /// 用户的守护设置（持久化到 UserDefaults）。
 ///
 /// **默认**：`.standard`（保守档）—— 用户首次进入 App 就走保守档，
@@ -87,6 +109,11 @@ public final class GuardSettings: ObservableObject {
         didSet { UserDefaults.standard.set(notifyOnLowBattery, forKey: Keys.notifyOnLowBattery) }
     }
 
+    /// 地图引擎：苹果 MapKit / 百度地图
+    @Published public var mapEngine: MapEngine {
+        didSet { UserDefaults.standard.set(mapEngine.rawValue, forKey: Keys.mapEngine) }
+    }
+
     public init() {
         let raw = UserDefaults.standard.string(forKey: Keys.mode) ?? GuardMode.standard.rawValue
         self.mode = GuardMode(rawValue: raw) ?? .standard
@@ -94,6 +121,8 @@ public final class GuardSettings: ObservableObject {
         self.powerSaving = UserDefaults.standard.bool(forKey: Keys.powerSaving)
         // 默认开：首次启动没有这个 key 时给 true
         self.notifyOnLowBattery = UserDefaults.standard.object(forKey: Keys.notifyOnLowBattery) as? Bool ?? true
+        let engineRaw = UserDefaults.standard.string(forKey: Keys.mapEngine) ?? MapEngine.apple.rawValue
+        self.mapEngine = MapEngine(rawValue: engineRaw) ?? .apple
 
         let ts = UserDefaults.standard.double(forKey: Keys.pausedUntil)
         if ts > 0 {
@@ -158,5 +187,6 @@ public final class GuardSettings: ObservableObject {
         static let pausedUntil = "lovetrack.pausedUntil"
         static let powerSaving = "lovetrack.powerSaving"
         static let notifyOnLowBattery = "lovetrack.notifyLowBattery"
+        static let mapEngine = "lovetrack.mapEngine"
     }
 }

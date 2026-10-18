@@ -340,6 +340,40 @@ public struct ProfileScreen: View {
 
     // MARK: - Settings group
 
+    /// 地图引擎切换（苹果地图 / 百度地图）
+    private var mapEngineRow: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                    .fill(Color(red: 0.94, green: 0.96, blue: 1.00))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "map.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(red: 0.22, green: 0.48, blue: 0.95))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("地图引擎")
+                    .font(.system(size: Theme.fontSm, weight: .medium))
+                    .foregroundColor(Theme.text)
+                Text(guardSettings.mapEngine.detail)
+                    .font(.system(size: 11))
+                    .foregroundColor(Theme.textMuted)
+            }
+            Spacer()
+            Picker("", selection: Binding(
+                get: { guardSettings.mapEngine },
+                set: { guardSettings.mapEngine = $0 }
+            )) {
+                ForEach(MapEngine.allCases) { e in
+                    Text(e.title).tag(e)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+        }
+        .padding(.vertical, 10)
+    }
+
     private var lowBatterySubtitle: String {
         guardSettings.notifyOnLowBattery
             ? "低电提醒已开启 · 对方 < 20% 时提示"
@@ -365,6 +399,8 @@ public struct ProfileScreen: View {
 
     private var settingsGroup: some View {
         VStack(spacing: 0) {
+            mapEngineRow
+            Divider().padding(.leading, 50)
             settingsRow(systemIcon: "bell.fill", title: "通知提醒", subtitle: lowBatterySubtitle,
                        color: Theme.primarySoft, tint: Theme.primary)
             Divider().padding(.leading, 50)

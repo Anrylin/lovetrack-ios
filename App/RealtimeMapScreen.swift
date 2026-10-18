@@ -6,6 +6,7 @@ import CoreLocation
 public struct RealtimeMapScreen: View {
     @EnvironmentObject var session: AppSession
     @EnvironmentObject var store: RelationshipStore
+    @EnvironmentObject var guardSettings: GuardSettings
 
     @State private var locationEnabled: Bool = true
     @State private var toastMessage: String?
@@ -364,29 +365,86 @@ public struct RealtimeMapScreen: View {
 
     // MARK: - 地图区: MapKit 真实地图
 
+    /// 百度地图上的两个人
+    private var baiduPeople: [BaiduMapPerson] {
+        var list: [BaiduMapPerson] = []
+        if let me = session.lastLocation?.coordinate {
+            list.append(BaiduMapPerson(id: "me", name: "我", coordinate: me, isMe: true))
+        }
+        if let p = store.lastKnownPartnerLocation {
+            list.append(BaiduMapPerson(
+                id: "partner",
+                name: store.partner?.displayName ?? "TA",
+                coordinate: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon),
+                isMe: false
+            ))
+        }
+        return list
+    }
+
+    private var baiduMapType: BMKMapType {
+        switch mapStyle {
+        case .satellite: return .satellite
+        default: return .standard
+        }
+    }
+
+    /// 还没有定位时的占位（替代原来的手绘假图）
+    private var locatingPlaceholder: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("正在获取定位…")
+                .font(.system(size: Theme.fontSm, weight: .medium))
+                .foregroundColor(Theme.text)
+            Text("首次定位在室外约 1-3 秒，室内可能更久")
+                .font(.system(size: 10))
+                .foregroundColor(Theme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 320)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous)
+                .fill(Theme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous)
+                .strokeBorder(Theme.border, lineWidth: 1.5)
+        )
+    }
+
     @ViewBuilder
     private var mapSection: some View {
         ZStack(alignment: .topTrailing) {
             if let center = mapCenter {
-                MapKitView(
-                    center: center,
-                    partner: mapPartner,
-                    me: mapMe,
-                    style: mapStyle
-                )
-                .frame(height: 320)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous))
-                .softShadow(Theme.shadowMd)
+                if guardSettings.mapEngine == .baidu {
+                    BaiduMapView(
+                        center: center,
+                        zoomLevel: 15,
+                        people: baiduPeople,
+                        mapType: baiduMapType
+                    )
+                    .frame(height: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous))
+                    .softShadow(Theme.shadowMd)
+                } else {
+                    MapKitView(
+                        center: center,
+                        partner: mapPartner,
+                        me: mapMe,
+                        style: mapStyle
+                    )
+                    .frame(height: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous))
+                    .softShadow(Theme.shadowMd)
+                }
             } else {
-                MiniMap(
-                    partnerName: store.partner?.displayName ?? "TA",
-                    partnerAvatar: "👧🏻",
-                    lastUpdatedText: "1 分钟前更新"
-                )
+                // 不再显示手绘假地图，如实告诉用户正在定位
+                locatingPlaceholder
             }
 
             // 地图样式切换（只有真地图才显示；仿 LinkUp 的「经典/卫星」切换）
-            if mapCenter != nil {
+            if mapCenter != nil && guardSettings.mapEngine == .apple {
                 HStack(spacing: 6) {
                     ForEach(MapKitView.MapStyleOption.allCases) { opt in
                         Button {
