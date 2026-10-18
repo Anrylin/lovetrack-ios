@@ -12,7 +12,7 @@ public struct LoveTrackBottomNav: View {
     }
 
     public enum Tab: String, CaseIterable, Identifiable {
-        case protect, location, message, profile
+        case protect, location, message, stats, profile
         public var id: String { rawValue }
 
         var label: String {
@@ -20,6 +20,7 @@ public struct LoveTrackBottomNav: View {
             case .protect: return "守护"
             case .location: return "位置"
             case .message: return "消息"
+            case .stats: return "统计"
             case .profile: return "我的"
             }
         }
@@ -29,6 +30,7 @@ public struct LoveTrackBottomNav: View {
             case .protect: return "heart.fill"
             case .location: return "mappin.and.ellipse"
             case .message: return "bubble.left.and.bubble.right.fill"
+            case .stats: return "chart.bar.fill"
             case .profile: return "person.crop.circle.fill"
             }
         }
