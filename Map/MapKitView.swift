@@ -32,8 +32,7 @@ public struct MapKitView: View {
             switch self {
             case .standard: return "经典"
             case .satellite: return "卫星"
-            case .hybrid: return "混合"
-            }
+                }
         }
 
         public var icon: String {
@@ -256,12 +255,11 @@ struct BaiduMapView: UIViewRepresentable {
         BaiduMapManager.shared.start()
 
         let map = BMKMapView()
-        map.zoomLevel = zoomLevel
+        map.zoomLevel = Float(zoomLevel)
         map.centerCoordinate = center
         map.mapType = mapType
         map.showMapScaleBar = false
-        map.buildingsEnabled = true
-        map.showIndoorMap = false
+        map.isBuildingsEnabled = true
         map.isTrafficEnabled = false
         syncAnnotations(on: map)
         Log.info("BaiduMap", "BMKMapView 已创建 center=(\(center.latitude), \(center.longitude)) zoom=\(zoomLevel)")
@@ -331,7 +329,7 @@ struct BaiduMapTestScreen: View {
                 .ignoresSafeArea(edges: .bottom)
 
             HStack(spacing: 6) {
-                ForEach([BMKMapType.standard, .satellite, .hybrid], id: \.rawValue) { t in
+                ForEach([BMKMapType.standard, .satellite], id: \.rawValue) { t in
                     Button {
                         mapType = t
                     } label: {
@@ -352,7 +350,6 @@ struct BaiduMapTestScreen: View {
     private func label(for t: BMKMapType) -> String {
         switch t {
         case .satellite: return "卫星"
-        case .hybrid: return "混合"
         default: return "经典"
         }
     }
