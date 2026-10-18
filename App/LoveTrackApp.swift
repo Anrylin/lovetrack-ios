@@ -410,7 +410,7 @@ final class AppSession: ObservableObject {
         // 5. 按用户选的档位启动定位
         applyGuardMode()
         // 5.5 额外请求一次单点定位，让地图首帧更快出现
-        locationManager.requestOneShot()
+        await locationManager.requestOneShot()
         // 6. 订阅 partner 位置流（把对方位置更新到 store）
         startObservingPartnerLocation()
         // 7. HTTP 兜底轮询：WebSocket 断了也能拉
@@ -593,7 +593,7 @@ final class AppSession: ObservableObject {
         }
         Task { await locationManager.handleAppForeground() }
         // 回到前台也立刻催一次单点定位
-        locationManager.requestOneShot()
+        Task { await locationManager.requestOneShot() }
         // 切回前台立即报一次自己的状态
         Task { await reportMyStatus() }
         // 切回前台立即拉一次对方位置（不等 15s 轮询）
