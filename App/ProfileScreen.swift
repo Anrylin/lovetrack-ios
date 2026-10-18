@@ -12,6 +12,7 @@ public struct ProfileScreen: View {
 
     @ObservedObject private var device = DeviceStatusMonitor.shared
     @StateObject private var usage = UsageStats()
+    @ObservedObject private var baidu = BaiduMapManager.shared
 
     @State private var showEdit = false
     @State private var editNickname = ""
@@ -340,6 +341,26 @@ public struct ProfileScreen: View {
 
     // MARK: - Settings group
 
+    /// 百度地图状态（直接显示在界面上，不用翻日志）
+    private var baiduStatusText: String {
+        if !baidu.started { return "未初始化" }
+        if let p = baidu.permissionState {
+            if p == 0 { return "✅ 鉴权通过，底图可用" }
+            return "❌ 鉴权失败，百度错误码 \(p)"
+        }
+        if let n = baidu.networkState, n != 0 {
+            return "❌ 网络回调错误 \(n)"
+        }
+        return baidu.startSucceeded ? "已启动，等待鉴权回调…" : "start 返回 false"
+    }
+
+    private var baiduBadgeColor: Color {
+        if let p = baidu.permissionState {
+            return p == 0 ? Theme.success : Color(red: 0.94, green: 0.27, blue: 0.27)
+        }
+        return baidu.startSucceeded ? Theme.violet : Color(red: 0.95, green: 0.59, blue: 0.27)
+    }
+
     /// 地图引擎切换（苹果地图 / 百度地图）
     private var mapEngineRow: some View {
         HStack(spacing: 12) {
@@ -400,6 +421,9 @@ public struct ProfileScreen: View {
     private var settingsGroup: some View {
         VStack(spacing: 0) {
             mapEngineRow
+            Divider().padding(.leading, 50)
+            settingsRow(systemIcon: "b.circle.fill", title: "百度地图状态", subtitle: baiduStatusText,
+                       color: baiduBadgeColor.opacity(0.15), tint: baiduBadgeColor)
             Divider().padding(.leading, 50)
             settingsRow(systemIcon: "bell.fill", title: "通知提醒", subtitle: lowBatterySubtitle,
                        color: Theme.primarySoft, tint: Theme.primary)

@@ -214,6 +214,7 @@ public struct MapPerson: Equatable, Identifiable, Hashable {
 final class BaiduGeneralDelegate: NSObject, BMKGeneralDelegate {
     func onGetNetworkState(_ iError: Int32) {
         Log.info("BaiduMap", "网络状态回调：\(iError == 0 ? "✅ 正常" : "❌ 错误码 \(iError)")")
+        DispatchQueue.main.async { BaiduMapManager.shared.networkState = iError }
     }
 
     func onGetPermissionState(_ iError: Int32) {
@@ -222,18 +223,24 @@ final class BaiduGeneralDelegate: NSObject, BMKGeneralDelegate {
         } else {
             Log.warn("BaiduMap", "❌ AK 鉴权失败，百度错误码 = \(iError)")
         }
+        DispatchQueue.main.async { BaiduMapManager.shared.permissionState = iError }
     }
 }
 
 /// 百度地图全局管理器（BMKMapManager 必须被强引用，否则会被释放）
-final class BaiduMapManager {
+/// 同时把状态暴露给界面，方便直接看到鉴权结果（不依赖日志页）
+final class BaiduMapManager: ObservableObject {
     static let shared = BaiduMapManager()
 
     private let manager = BMKMapManager()
     /// delegate 必须强引用，否则回调丢失
     private let delegate = BaiduGeneralDelegate()
-    private(set) var started = false
-    private(set) var startSucceeded = false
+
+    @Published private(set) var started = false
+    @Published private(set) var startSucceeded = false
+    /// onGetPermissionState 的错误码（0 = 通过，nil = 还没回调）
+    @Published private(set) var permissionState: Int32?
+    @Published private(set) var networkState: Int32?
 
     /// AK（申请时填的 Bundle ID 必须是 com.lovetrack.app）
     static let apiKey = "jFKhHVyZwSvjVH3F0ARAqZODTMz8XUqL"
