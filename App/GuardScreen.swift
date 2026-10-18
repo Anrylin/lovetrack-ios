@@ -7,10 +7,12 @@ public struct GuardScreen: View {
     @EnvironmentObject var store: RelationshipStore
     @EnvironmentObject var guardSettings: GuardSettings
 
-    @State private var guardEnabled: Bool = true
-    @State private var notifyOnLowBattery: Bool = true
-    @State private var notifyOnSafeZoneExit: Bool = true
-    @State private var shareLocationToFamily: Bool = false
+    /// 守护总开关：直接联动已保存的档位（off ↔ standard），不再是本地假开关
+    private var guardEnabled: Bool {
+        guardSettings.mode != .off
+    }
+
+    @State private var showEmergency = false
 
     public init() {}
 
@@ -20,6 +22,16 @@ public struct GuardScreen: View {
             contentScroll
         }
         .ignoresSafeArea(edges: .bottom)
+        .sheet(isPresented: $showEmergency) {
+            NavigationStack {
+                EmergencyContactsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("关闭") { showEmergency = false }
+                        }
+                    }
+            }
+        }
     }
 
     // MARK: - Background
@@ -170,7 +182,18 @@ public struct GuardScreen: View {
                             .foregroundColor(.white.opacity(0.9))
                     }
                     Spacer()
-                    BrandToggle(isOn: $guardEnabled)
+                    BrandToggle(isOn: Binding(
+                        get: { guardSettings.mode != .off },
+                        set: { newValue in
+                            if newValue {
+                                if guardSettings.mode == .off { guardSettings.mode = .standard }
+                            } else {
+                                guardSettings.mode = .off
+                            }
+                            session.applyGuardMode()
+                            Log.info("GuardScreen", "守护总开关 → \(newValue ? "开启" : "关闭")")
+                        }
+                    ))
                 }
 
                 // 守护双方头像 + 中间爱心连线
@@ -417,17 +440,12 @@ public struct GuardScreen: View {
                           color: Color(red: 0.92, green: 0.99, blue: 0.96), tint: Theme.success,
                           isOn: $guardSettings.powerSaving)
                 Divider().padding(.leading, 50)
-                settingRow(systemIcon: "battery.25", title: "低电提醒", subtitle: "TA 电量 < 20% 时通知你",
-                          color: Theme.primarySoft, tint: Theme.primary, isOn: $notifyOnLowBattery)
+                settingRow(systemIcon: "battery.25", title: "低电提醒", subtitle: "TA 电量 < 20% 时提醒你",
+                          color: Theme.primarySoft, tint: Theme.primary,
+                          isOn: $guardSettings.notifyOnLowBattery)
                 Divider().padding(.leading, 50)
-                settingRow(systemIcon: "door.left.hand.closed", title: "离开安全区提醒", subtitle: "家、公司等",
-                          color: Theme.violetSoft, tint: Theme.violet, isOn: $notifyOnSafeZoneExit)
-                Divider().padding(.leading, 50)
-                settingRow(systemIcon: "person.2.fill", title: "同步位置给家人", subtitle: "父母可查看 TA 的位置",
-                          color: Color(red: 0.92, green: 0.99, blue: 0.96), tint: Theme.success, isOn: $shareLocationToFamily)
-                Divider().padding(.leading, 50)
-                NavigationLink {
-                    EmergencyContactsView()
+                Button {
+                    showEmergency = true
                 } label: {
                     HStack(spacing: 12) {
                         ZStack {

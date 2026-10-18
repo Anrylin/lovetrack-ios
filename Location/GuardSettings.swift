@@ -82,11 +82,18 @@ public final class GuardSettings: ObservableObject {
         didSet { UserDefaults.standard.set(powerSaving, forKey: Keys.powerSaving) }
     }
 
+    /// 对方电量低于 20% 时提醒我
+    @Published public var notifyOnLowBattery: Bool {
+        didSet { UserDefaults.standard.set(notifyOnLowBattery, forKey: Keys.notifyOnLowBattery) }
+    }
+
     public init() {
         let raw = UserDefaults.standard.string(forKey: Keys.mode) ?? GuardMode.standard.rawValue
         self.mode = GuardMode(rawValue: raw) ?? .standard
         self.isPaused = UserDefaults.standard.bool(forKey: Keys.isPaused)
         self.powerSaving = UserDefaults.standard.bool(forKey: Keys.powerSaving)
+        // 默认开：首次启动没有这个 key 时给 true
+        self.notifyOnLowBattery = UserDefaults.standard.object(forKey: Keys.notifyOnLowBattery) as? Bool ?? true
 
         let ts = UserDefaults.standard.double(forKey: Keys.pausedUntil)
         if ts > 0 {
@@ -150,5 +157,6 @@ public final class GuardSettings: ObservableObject {
         static let isPaused = "lovetrack.isPaused"
         static let pausedUntil = "lovetrack.pausedUntil"
         static let powerSaving = "lovetrack.powerSaving"
+        static let notifyOnLowBattery = "lovetrack.notifyLowBattery"
     }
 }

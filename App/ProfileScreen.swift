@@ -2,11 +2,13 @@ import SwiftUI
 import Foundation
 import Network
 import UIKit
+import CoreLocation
 
 /// 我的 Tab — 个人资料 hero + 守护数据 + 设置 + 会员入口
 public struct ProfileScreen: View {
     @EnvironmentObject var session: AppSession
     @EnvironmentObject var store: RelationshipStore
+    @EnvironmentObject var guardSettings: GuardSettings
 
     @ObservedObject private var device = DeviceStatusMonitor.shared
     @StateObject private var usage = UsageStats()
@@ -338,27 +340,38 @@ public struct ProfileScreen: View {
 
     // MARK: - Settings group
 
+    private var lowBatterySubtitle: String {
+        guardSettings.notifyOnLowBattery
+            ? "低电提醒已开启 · 对方 < 20% 时提示"
+            : "低电提醒已关闭"
+    }
+
+    private var privacySubtitle: String {
+        switch CLLocationManager().authorizationStatus {
+        case .authorizedAlways: return "定位：始终允许"
+        case .authorizedWhenInUse: return "定位：使用 App 期间"
+        case .denied: return "定位：已拒绝，请去系统设置开启"
+        case .restricted: return "定位：受限"
+        case .notDetermined: return "定位：尚未授权"
+        @unknown default: return "定位：未知"
+        }
+    }
+
+    private var appVersionText: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        return "v\(v) (\(b))"
+    }
+
     private var settingsGroup: some View {
         VStack(spacing: 0) {
-            settingsRow(systemIcon: "shield.fill", title: "守护设置", subtitle: "位置、低电、安全区",
-                       color: Theme.violetSoft, tint: Theme.violet)
-            Divider().padding(.leading, 50)
-            settingsRow(systemIcon: "bell.fill", title: "通知提醒", subtitle: "消息、戳一戳、电量",
+            settingsRow(systemIcon: "bell.fill", title: "通知提醒", subtitle: lowBatterySubtitle,
                        color: Theme.primarySoft, tint: Theme.primary)
             Divider().padding(.leading, 50)
-            settingsRow(systemIcon: "lock.fill", title: "隐私与权限", subtitle: "位置、通讯录、轨迹",
+            settingsRow(systemIcon: "lock.fill", title: "隐私与权限", subtitle: privacySubtitle,
                        color: Color(red: 0.92, green: 0.99, blue: 0.96), tint: Theme.success)
             Divider().padding(.leading, 50)
-            settingsRow(systemIcon: "paintbrush.fill", title: "主题外观", subtitle: "粉紫 / 星空 / 森系",
-                       color: Color(red: 0.95, green: 0.91, blue: 1.00), tint: Color(red: 0.55, green: 0.36, blue: 0.96))
-            Divider().padding(.leading, 50)
-            settingsRow(systemIcon: "heart.fill", title: "邀请好友", subtitle: "双方各得 7 天 VIP",
-                       color: Color(red: 1.00, green: 0.94, blue: 0.88), tint: Color(red: 0.95, green: 0.59, blue: 0.27))
-            Divider().padding(.leading, 50)
-            settingsRow(systemIcon: "questionmark.circle.fill", title: "帮助与反馈", subtitle: "常见问题、联系客服",
-                       color: Theme.surface2, tint: Theme.textMuted)
-            Divider().padding(.leading, 50)
-            settingsRow(systemIcon: "info.circle.fill", title: "关于爱合", subtitle: "v0.1.0 · 用科技守护亲密",
+            settingsRow(systemIcon: "info.circle.fill", title: "关于 LoveTrack", subtitle: appVersionText,
                        color: Theme.surface2, tint: Theme.textMuted)
         }
         .padding(.horizontal, 14)

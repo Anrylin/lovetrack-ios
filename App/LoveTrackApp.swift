@@ -68,6 +68,8 @@ final class AppSession: ObservableObject {
     @Published var shotNotice: String?
     /// 收到对方的紧急提醒
     @Published var incomingSOS: SOSInfo?
+    /// 上次低电提醒时间（1 小时内不重复提醒）
+    private var lastLowBatteryAlertAt: Date?
 
     struct SOSInfo: Equatable {
         let nickname: String
@@ -171,6 +173,19 @@ final class AppSession: ObservableObject {
                         at: Date(timeIntervalSince1970: at / 1000)
                     )
                     Log.info("AppSession", "已更新对方状态：电量 \(msg["battery"] as? Int ?? -1)%")
+
+                    // 低电提醒：开关开启 + 电量 < 20% + 1 小时内不重复
+                    if let b = msg["battery"] as? Int, b < 20, self.guardSettings.notifyOnLowBattery {
+                        let now = Date()
+                        if self.lastLowBatteryAlertAt == nil
+                            || now.timeIntervalSince(self.lastLowBatteryAlertAt!) > 3600 {
+                            self.lastLowBatteryAlertAt = now
+                            let who = self.relationshipStore.partner?.displayName ?? "TA"
+                            self.shotNotice = "⚠️ \(who) 电量只剩 \(b)%，记得提醒 TA 充电"
+                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                            Log.warn("AppSession", "低电提醒：对方电量 \(b)%")
+                        }
+                    }
                 }
             }
         }
@@ -618,7 +633,7 @@ struct RootView: View {
                         .sheet(isPresented: $session.showPairSheet) {
                             PairScreen()
                         }
-                        .alert("截图提示", isPresented: Binding(
+                        .alert("提示", isPresented: Binding(
                             get: { session.shotNotice != nil },
                             set: { if !$0 { session.shotNotice = nil } }
                         )) {
