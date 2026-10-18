@@ -322,7 +322,7 @@ public struct MessageScreen: View {
         do {
             try await http.sendMessage(emoji)
             await loadMessages()
-            UINotificationFeedbackGenerator().notificationOccurred(.light)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             Log.info("MessageScreen", "快捷表情已发送：\(emoji)")
         } catch {
             Log.error("MessageScreen", "快捷表情发送失败：\(error)")
