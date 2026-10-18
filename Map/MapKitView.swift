@@ -142,9 +142,23 @@ private struct PersonMarkerView: View {
         VStack(spacing: 2) {
             ZStack {
                 Circle()
-                    .fill(isMe ? Color.blue : Color.pink)
-                    .frame(width: 36, height: 36)
-                    .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
+                    .fill(
+                        isMe
+                            ? AnyShapeStyle(LinearGradient(
+                                colors: [Color(red: 0.22, green: 0.52, blue: 0.96),
+                                         Color(red: 0.30, green: 0.34, blue: 0.90)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing))
+                            : AnyShapeStyle(LinearGradient(
+                                colors: [Color(red: 1.00, green: 0.42, blue: 0.66),
+                                         Color(red: 0.62, green: 0.35, blue: 0.95)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing))
+                    )
+                    .frame(width: 38, height: 38)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                    .shadow(
+                        color: (isMe ? Color.blue : Color.pink).opacity(0.45),
+                        radius: 6, x: 0, y: 3
+                    )
                 Image(systemName: isMe ? "person.fill" : "heart.fill")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.white)
