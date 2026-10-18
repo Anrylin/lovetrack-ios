@@ -32,7 +32,8 @@ public struct MapKitView: View {
             switch self {
             case .standard: return "经典"
             case .satellite: return "卫星"
-                }
+            case .hybrid: return "混合"
+            }
         }
 
         public var icon: String {
