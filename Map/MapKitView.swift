@@ -239,8 +239,8 @@ final class BaiduMapManager: ObservableObject {
     @Published private(set) var started = false
     @Published private(set) var startSucceeded = false
     /// onGetPermissionState 的错误码（0 = 通过，nil = 还没回调）
-    @Published private(set) var permissionState: Int32?
-    @Published private(set) var networkState: Int32?
+    @Published fileprivate(set) var permissionState: Int32?
+    @Published fileprivate(set) var networkState: Int32?
 
     /// AK（申请时填的 Bundle ID 必须是 com.lovetrack.app）
     static let apiKey = "jFKhHVyZwSvjVH3F0ARAqZODTMz8XUqL"
