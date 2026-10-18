@@ -122,7 +122,20 @@ public final class GuardSettings: ObservableObject {
         // 默认开：首次启动没有这个 key 时给 true
         self.notifyOnLowBattery = UserDefaults.standard.object(forKey: Keys.notifyOnLowBattery) as? Bool ?? true
         let engineRaw = UserDefaults.standard.string(forKey: Keys.mapEngine) ?? MapEngine.apple.rawValue
-        self.mapEngine = MapEngine(rawValue: engineRaw) ?? .apple
+        var engine = MapEngine(rawValue: engineRaw) ?? .apple
+
+        // 崩溃循环保护：连续 2 次异常退出就自动回退到苹果地图，
+        // 避免用户切到百度地图后每次启动都崩、进不去 App
+        let launches = UserDefaults.standard.integer(forKey: Keys.launchCount)
+        UserDefaults.standard.set(launches + 1, forKey: Keys.launchCount)
+        if launches >= 2 && engine == .baidu {
+            engine = .apple
+            UserDefaults.standard.set(MapEngine.apple.rawValue, forKey: Keys.mapEngine)
+        }
+        self.mapEngine = engine
+        if launches >= 2 && engineRaw == MapEngine.baidu.rawValue {
+            Log.warn("GuardSettings", "连续启动异常，已自动切回苹果地图")
+        }
 
         let ts = UserDefaults.standard.double(forKey: Keys.pausedUntil)
         if ts > 0 {
@@ -134,6 +147,11 @@ public final class GuardSettings: ObservableObject {
         } else {
             self.pausedUntil = nil
         }
+    }
+
+    /// App 成功进入前台后调用：清零启动计数，表示这次启动是健康的
+    public func markLaunchHealthy() {
+        UserDefaults.standard.set(0, forKey: Keys.launchCount)
     }
 
     /// 当前是否真的在采集位置。
@@ -188,5 +206,6 @@ public final class GuardSettings: ObservableObject {
         static let powerSaving = "lovetrack.powerSaving"
         static let notifyOnLowBattery = "lovetrack.notifyLowBattery"
         static let mapEngine = "lovetrack.mapEngine"
+        static let launchCount = "lovetrack.launchCount"
     }
 }

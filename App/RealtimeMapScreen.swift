@@ -424,6 +424,7 @@ public struct RealtimeMapScreen: View {
                         people: baiduPeople,
                         mapType: baiduMapType
                     )
+                    .id("baidu-\(guardSettings.mapEngine.rawValue)")
                     .frame(height: 320)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous))
                     .softShadow(Theme.shadowMd)
@@ -434,6 +435,7 @@ public struct RealtimeMapScreen: View {
                         me: mapMe,
                         style: mapStyle
                     )
+                    .id("apple-\(mapStyle.rawValue)")
                     .frame(height: 320)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius2xl, style: .continuous))
                     .softShadow(Theme.shadowMd)

@@ -224,8 +224,11 @@ final class BaiduMapManager {
     func start() {
         guard !started else { return }
         started = true
-        startSucceeded = manager.start(Self.apiKey, generalDelegate: nil)
-        Log.info("BaiduMap", "BMKMapManager 启动：\(startSucceeded ? "✅ 成功" : "❌ 失败")")
+        // 延迟到下一轮 runloop：避免在 App.init 期间调用 SDK 导致启动崩溃
+        DispatchQueue.main.async {
+            self.startSucceeded = self.manager.start(Self.apiKey, generalDelegate: nil)
+            Log.info("BaiduMap", "BMKMapManager 启动：\(self.startSucceeded ? "✅ 成功" : "❌ 失败")")
+        }
     }
 }
 
@@ -252,8 +255,19 @@ struct BaiduMapView: UIViewRepresentable {
     let people: [BaiduMapPerson]
     var mapType: BMKMapType = .standard
 
-    func makeUIView(context: Context) -> BMKMapView {
-        BaiduMapManager.shared.start()
+    func makeUIView(context: Context) -> UIView {
+        // AK 校验失败时绝不创建 BMKMapView（百度会直接崩溃，Swift 层捕获不到）
+        guard BaiduMapManager.shared.startSucceeded else {
+            Log.warn("BaiduMap", "跳过创建 BMKMapView：SDK 未成功初始化")
+            let label = UILabel()
+            label.text = "百度地图未就绪\nAK 可能不识别当前签名"
+            label.numberOfLines = 0
+            label.textAlignment = .center
+            label.font = .systemFont(ofSize: 12)
+            label.textColor = .secondaryLabel
+            label.backgroundColor = .secondarySystemBackground
+            return label
+        }
 
         let map = BMKMapView()
         map.zoomLevel = Float(zoomLevel)
@@ -267,7 +281,8 @@ struct BaiduMapView: UIViewRepresentable {
         return map
     }
 
-    func updateUIView(_ map: BMKMapView, context: Context) {
+    func updateUIView(_ uiView: UIView, context: Context) {
+        guard let map = uiView as? BMKMapView else { return }
         if map.mapType != mapType {
             map.mapType = mapType
         }

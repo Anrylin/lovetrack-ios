@@ -30,6 +30,8 @@ struct LoveTrackApp: App {
             case .background:
                 session.handleEnterBackground()
             case .active:
+                // 成功进入前台 = 这次启动是健康的，清零崩溃计数
+                session.guardSettings.markLaunchHealthy()
                 session.handleEnterForeground()
             case .inactive:
                 break
