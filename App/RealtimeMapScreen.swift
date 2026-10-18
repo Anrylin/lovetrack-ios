@@ -509,11 +509,13 @@ public struct RealtimeMapScreen: View {
 
     /// 地图中心点: 优先用对方位置, 没有则用我自己的位置
     private var mapCenter: CLLocationCoordinate2D? {
-        if let p = store.lastKnownPartnerLocation {
-            return CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)
-        }
+        // 优先用自己的位置：本地定位 1-2 秒就有，不必等对方推送
         if let me = session.lastLocation {
             return me.coordinate
+        }
+        // 自己还没定位时，至少把对方的位置显示出来
+        if let p = store.lastKnownPartnerLocation {
+            return CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)
         }
         return nil
     }

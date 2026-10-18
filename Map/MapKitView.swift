@@ -256,18 +256,9 @@ struct BaiduMapView: UIViewRepresentable {
     var mapType: BMKMapType = .standard
 
     func makeUIView(context: Context) -> UIView {
-        // AK 校验失败时绝不创建 BMKMapView（百度会直接崩溃，Swift 层捕获不到）
-        guard BaiduMapManager.shared.startSucceeded else {
-            Log.warn("BaiduMap", "跳过创建 BMKMapView：SDK 未成功初始化")
-            let label = UILabel()
-            label.text = "百度地图未就绪\nAK 可能不识别当前签名"
-            label.numberOfLines = 0
-            label.textAlignment = .center
-            label.font = .systemFont(ofSize: 12)
-            label.textColor = .secondaryLabel
-            label.backgroundColor = .secondarySystemBackground
-            return label
-        }
+        // -ObjC 已修复，即使 start() 返回 false 也允许创建地图
+        // （start 的返回值只代表 AK 格式/时序，真正的网络鉴权是异步的）
+        BaiduMapManager.shared.start()
 
         let map = BMKMapView()
         map.zoomLevel = Float(zoomLevel)
@@ -277,7 +268,7 @@ struct BaiduMapView: UIViewRepresentable {
         map.isBuildingsEnabled = true
         map.isTrafficEnabled = false
         syncAnnotations(on: map)
-        Log.info("BaiduMap", "BMKMapView 已创建 center=(\(center.latitude), \(center.longitude)) zoom=\(zoomLevel)")
+        Log.info("BaiduMap", "BMKMapView 已创建 center=(\(center.latitude), \(center.longitude)) zoom=\(zoomLevel) startSucceeded=\(BaiduMapManager.shared.startSucceeded)")
         return map
     }
 
