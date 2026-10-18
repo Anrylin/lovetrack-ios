@@ -128,6 +128,9 @@ targets:
         FRAMEWORK_SEARCH_PATHS: $(inherited) $(SRCROOT)/Frameworks
         LIBRARY_SEARCH_PATHS: $(inherited) $(SRCROOT)/Frameworks
         CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES: YES
+        # 关键：百度地图是静态库 + ObjC Category，
+        # 不加 -ObjC 链接器会把 Category 方法裁掉，运行时 unrecognized selector 崩溃
+        OTHER_LDFLAGS: $(inherited) -ObjC
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
