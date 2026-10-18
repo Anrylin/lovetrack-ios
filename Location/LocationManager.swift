@@ -231,6 +231,14 @@ public actor LocationManager {
         try? start()
     }
 
+    /// 立即请求一次单点定位：比持续定位更快返回首个坐标（首帧提速）
+    public func requestOneShot() {
+        let auth = currentAuthState()
+        guard auth == .whenInUse || auth == .always else { return }
+        cl.requestLocation()
+        Log.info("Location", "已请求单点定位（加速首帧）")
+    }
+
     public func stop() {
         cl.stopUpdatingLocation()
         cl.stopMonitoringSignificantLocationChanges()
@@ -418,6 +426,11 @@ public actor LocationManager {
         }
         for cont in authContinuations.values {
             cont.yield(state)
+        }
+        // 刚授权成功时立刻催一次单点定位，别等定时器
+        if status == .authorizedWhenInUse || status == .authorizedAlways {
+            cl.requestLocation()
+            Log.info("Location", "授权成功，立即请求单点定位")
         }
     }
 
