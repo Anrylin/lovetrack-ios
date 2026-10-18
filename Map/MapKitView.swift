@@ -206,3 +206,154 @@ public struct MapPerson: Equatable, Identifiable, Hashable {
         hasher.combine(coordinate.longitude)
     }
 }
+
+
+// MARK: - 百度地图（BMKMapView 封装）
+
+/// 百度地图全局管理器（BMKMapManager 必须被强引用，否则会被释放）
+final class BaiduMapManager {
+    static let shared = BaiduMapManager()
+
+    private let manager = BMKMapManager()
+    private(set) var started = false
+    private(set) var startSucceeded = false
+
+    /// AK（申请时填的 Bundle ID 必须是 com.lovetrack.app）
+    static let apiKey = "jFKhHVyZwSvjVH3F0ARAqZODTMz8XUqL"
+
+    func start() {
+        guard !started else { return }
+        started = true
+        startSucceeded = manager.start(Self.apiKey, generalDelegate: nil)
+        Log.info("BaiduMap", "BMKMapManager 启动：\(startSucceeded ? "✅ 成功" : "❌ 失败")")
+    }
+}
+
+/// 百度地图上的一个人
+struct BaiduMapPerson: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let coordinate: CLLocationCoordinate2D
+    let isMe: Bool
+
+    static func == (lhs: BaiduMapPerson, rhs: BaiduMapPerson) -> Bool {
+        lhs.id == rhs.id
+            && lhs.name == rhs.name
+            && lhs.isMe == rhs.isMe
+            && lhs.coordinate.latitude == rhs.coordinate.latitude
+            && lhs.coordinate.longitude == rhs.coordinate.longitude
+    }
+}
+
+/// 百度地图容器（SwiftUI 包装 BMKMapView）
+struct BaiduMapView: UIViewRepresentable {
+    let center: CLLocationCoordinate2D
+    let zoomLevel: CGFloat
+    let people: [BaiduMapPerson]
+    var mapType: BMKMapType = .standard
+
+    func makeUIView(context: Context) -> BMKMapView {
+        BaiduMapManager.shared.start()
+
+        let map = BMKMapView()
+        map.zoomLevel = zoomLevel
+        map.centerCoordinate = center
+        map.mapType = mapType
+        map.showMapScaleBar = false
+        map.buildingsEnabled = true
+        map.showIndoorMap = false
+        map.isTrafficEnabled = false
+        syncAnnotations(on: map)
+        Log.info("BaiduMap", "BMKMapView 已创建 center=(\(center.latitude), \(center.longitude)) zoom=\(zoomLevel)")
+        return map
+    }
+
+    func updateUIView(_ map: BMKMapView, context: Context) {
+        if map.mapType != mapType {
+            map.mapType = mapType
+        }
+        if abs(map.centerCoordinate.latitude - center.latitude) > 1e-7
+            || abs(map.centerCoordinate.longitude - center.longitude) > 1e-7 {
+            map.centerCoordinate = center
+        }
+        syncAnnotations(on: map)
+    }
+
+    private func syncAnnotations(on map: BMKMapView) {
+        if let existing = map.annotations as? [BMKAnnotation] {
+            map.removeAnnotations(existing)
+        }
+        for person in people {
+            let p = BMKPointAnnotation()
+            p.coordinate = person.coordinate
+            p.title = person.name
+            map.addAnnotation(p)
+        }
+    }
+}
+
+/// 百度地图实测区块（验证 AK 是否能出图）
+struct BaiduMapTestScreen: View {
+    @EnvironmentObject var session: AppSession
+    @EnvironmentObject var store: RelationshipStore
+
+    @State private var mapType: BMKMapType = .standard
+
+    private var center: CLLocationCoordinate2D {
+        if let p = store.lastKnownPartnerLocation {
+            return CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)
+        }
+        if let me = session.lastLocation?.coordinate {
+            return me
+        }
+        return CLLocationCoordinate2D(latitude: 39.915, longitude: 116.404)
+    }
+
+    private var people: [BaiduMapPerson] {
+        var list: [BaiduMapPerson] = []
+        if let me = session.lastLocation?.coordinate {
+            list.append(BaiduMapPerson(id: "me", name: "我", coordinate: me, isMe: true))
+        }
+        if let p = store.lastKnownPartnerLocation {
+            list.append(BaiduMapPerson(
+                id: "partner",
+                name: store.partner?.displayName ?? "TA",
+                coordinate: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon),
+                isMe: false
+            ))
+        }
+        return list
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            BaiduMapView(center: center, zoomLevel: 15, people: people, mapType: mapType)
+                .ignoresSafeArea(edges: .bottom)
+
+            HStack(spacing: 6) {
+                ForEach([BMKMapType.standard, .satellite, .hybrid], id: \.rawValue) { t in
+                    Button {
+                        mapType = t
+                    } label: {
+                        Text(label(for: t))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(mapType == t ? .white : Theme.text)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(mapType == t ? Theme.primary : Color.white.opacity(0.92)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(10)
+        }
+    }
+
+    private func label(for t: BMKMapType) -> String {
+        switch t {
+        case .satellite: return "卫星"
+        case .hybrid: return "混合"
+        default: return "经典"
+        }
+    }
+}

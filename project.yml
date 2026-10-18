@@ -46,14 +46,44 @@ targets:
       - path: Network
       - path: Relationship
       - path: UI
+      # App 图标（Assets.xcassets 必须进 resources 阶段，否则重新生成后会丢图标）
+      - path: Assets.xcassets
+        buildPhase: resources
     # Secrets (API keys 等) 走独立 xcconfig，已 gitignore
     # 缺失时 xcodegen 仍能 generate, 但编译会因 key 为空失败
     configFiles:
       Debug: Secrets.xcconfig
       Release: Secrets.xcconfig
-    # MapKit 是系统自带, 不需要第三方 framework
+    # 百度地图 SDK 由 CI 从 GitHub Release 下载到 Frameworks/（不进仓库）
+    # 本地构建需手动放置；缺失时 xcodegen 仍能生成，但编译会因找不到 framework 失败
     dependencies:
       - sdk: CoreLocation.framework
+      # ---- 百度地图 ----
+      - framework: Frameworks/BaiduMapAPI_Base.framework
+        embed: false
+        codeSign: false
+      - framework: Frameworks/BaiduMapAPI_Map.framework
+        embed: false
+        codeSign: false
+      - framework: Frameworks/BaiduMapAPI_Utils.framework
+        embed: false
+        codeSign: false
+      - framework: Frameworks/libzstd_iphoneos_arm64.a
+        embed: false
+        codeSign: false
+      # ---- 百度要求的系统库 ----
+      - sdk: libsqlite3.tbd
+      - sdk: libz.tbd
+      - sdk: libc++.tbd
+      - sdk: SystemConfiguration.framework
+      - sdk: CoreTelephony.framework
+      - sdk: QuartzCore.framework
+      - sdk: OpenGLES.framework
+      - sdk: CoreText.framework
+      - sdk: Security.framework
+      - sdk: CoreGraphics.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreMotion.framework
     info:
       path: Info.plist
       properties:
@@ -91,6 +121,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lovetrack.app
+        # 百度地图是 Objective-C 框架，需要桥接头把接口暴露给 Swift
+        SWIFT_OBJC_BRIDGING_HEADER: LoveTrack-Bridging-Header.h
+        FRAMEWORK_SEARCH_PATHS: $(inherited) $(SRCROOT)/Frameworks
+        LIBRARY_SEARCH_PATHS: $(inherited) $(SRCROOT)/Frameworks
+        CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES: YES
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

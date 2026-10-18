@@ -54,6 +54,19 @@ jobs:
           ls -la Frameworks
           du -sh Frameworks
 
+      - name: 用 XcodeGen 重新生成工程
+        run: |
+          set -e
+          echo "安装 XcodeGen…"
+          brew install xcodegen
+          echo "--- 生成工程（project.yml 是唯一事实源）---"
+          xcodegen generate
+          echo "--- 生成结果 ---"
+          ls -la LoveTrack.xcodeproj
+          echo "百度相关引用数：$(grep -c 'BaiduMapAPI' LoveTrack.xcodeproj/project.pbxproj || echo 0)"
+          echo "资源阶段：$(grep -c 'PBXResourcesBuildPhase' LoveTrack.xcodeproj/project.pbxproj || echo 0)"
+          echo "桥接头：$(grep -c 'SWIFT_OBJC_BRIDGING_HEADER' LoveTrack.xcodeproj/project.pbxproj || echo 0)"
+
       - name: 编译 Release（跳过签名）
         run: |
           set -o pipefail
