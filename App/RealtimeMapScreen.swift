@@ -363,6 +363,24 @@ public struct RealtimeMapScreen: View {
         .scrollIndicators(.hidden)
     }
 
+    /// 诊断浮层：显示当前引擎、坐标、百度 SDK 状态
+    private var mapDiagnosticText: String {
+        let engine = guardSettings.mapEngine == .baidu ? "百度" : "苹果"
+        let coord: String
+        if let c = mapCenter {
+            coord = String(format: "%.4f,%.4f", c.latitude, c.longitude)
+        } else {
+            coord = "无坐标"
+        }
+        let extra: String
+        if guardSettings.mapEngine == .baidu {
+            extra = " ·AK:\(BaiduMapManager.shared.startSucceeded ? "ok" : "fail")"
+        } else {
+            extra = ""
+        }
+        return "\(engine) · \(coord)\(extra)"
+    }
+
     // MARK: - 地图区: MapKit 真实地图
 
     /// 百度地图上的两个人
@@ -415,6 +433,21 @@ public struct RealtimeMapScreen: View {
 
     @ViewBuilder
     private var mapSection: some View {
+        VStack(spacing: 6) {
+            // 诊断状态条：无论地图是否渲染出来都能看到当前状态
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(guardSettings.mapEngine == .baidu
+                          ? (BaiduMapManager.shared.startSucceeded ? Theme.success : Color.orange)
+                          : Theme.success)
+                    .frame(width: 6, height: 6)
+                Text(mapDiagnosticText)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Theme.textMuted)
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+
         ZStack(alignment: .topTrailing) {
             if let center = mapCenter {
                 if guardSettings.mapEngine == .baidu {
@@ -467,6 +500,7 @@ public struct RealtimeMapScreen: View {
                 }
                 .padding(10)
             }
+        }
         }
     }
 
