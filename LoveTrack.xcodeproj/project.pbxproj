@@ -43,6 +43,7 @@
 		EF7217E51610C17ECF713A3D /* MapKitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D74949104C770650563AB57C /* MapKitView.swift */; };
 		F1E4C98790A547234EF70FBE /* BackendConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70494358B4F87A7B6A38A1F9 /* BackendConfig.swift */; };
 		FB44C8D27D50D8D6EB7CF47B /* DevLogScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 049F2195AA6604A37F9FDC60 /* DevLogScreen.swift */; };
+		A1B2C3D4E5F6000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000002 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -84,6 +85,7 @@
 		F874E78058B00815BBA2F6D7 /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
 		FEB52B8D48B64713BF962024 /* LogLevel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogLevel.swift; sourceTree = "<group>"; };
 		"TEMP_A0403576-3D25-43A9-8E74-2750EDE87089" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -225,6 +227,7 @@
 			isa = PBXGroup;
 			children = (
 				"TEMP_A0403576-3D25-43A9-8E74-2750EDE87089" /* Secrets.xcconfig */,
+				A1B2C3D4E5F6000000000002 /* Assets.xcassets */,
 			);
 			path = LoveTrack;
 			sourceTree = "<group>";
@@ -238,6 +241,7 @@
 			buildPhases = (
 				7F0D6B4332AAE895B5C9C7A8 /* Sources */,
 				9D1426791D24E9CCCE666C20 /* Frameworks */,
+				A1B2C3D4E5F6000000000003 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -328,6 +332,17 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A1B2C3D4E5F6000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F6000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		06C47BC201E29B26C7188934 /* Release */ = {
