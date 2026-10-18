@@ -17,6 +17,8 @@ on:
       - 'UI/**'
       - 'Info.plist'
       - 'Secrets.xcconfig'
+      - 'project.yml'
+      - 'LoveTrack-Bridging-Header.h'
       - 'LoveTrack.xcodeproj/**'
       - '.github/workflows/build-ios.yml'
 
