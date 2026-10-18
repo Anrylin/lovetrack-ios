@@ -204,8 +204,8 @@ public struct StatisticsScreen: View {
             VStack(alignment: .leading, spacing: 12) {
                 header("今日概览", icon: "calendar")
                 HStack(spacing: 10) {
-                    statBox(icon: "location.fill", value: "\(usage.reportCount)", unit: "次", label: "位置更新")
-                    statBox(icon: "clock.fill", value: "\(usage.todayMinutes)", unit: "分", label: "App 使用")
+                    statBox(icon: "location.fill", value: "\(usage.reportCount)", unit: "次", label: "我的上报")
+                    statBox(icon: "clock.fill", value: "\(store.partnerStatus?.appMinutes ?? 0)", unit: "分", label: "TA 今日使用")
                     statBox(icon: "heart.fill", value: pairedDays, unit: "天", label: "配对天数")
                 }
             }
@@ -250,17 +250,32 @@ public struct StatisticsScreen: View {
     private var usageCard: some View {
         card {
             VStack(alignment: .leading, spacing: 12) {
-                header("App 使用", icon: "iphone")
+                header("TA 的手机", icon: "iphone")
                 HStack(spacing: 10) {
-                    statBox(icon: "clock.fill", value: "\(usage.todayMinutes)", unit: "分", label: "今日使用")
-                    statBox(icon: "arrow.up.app", value: "\(usage.launchCount)", unit: "次", label: "启动")
-                    statBox(icon: "battery.75", value: device.battery >= 0 ? "\(device.battery)%" : "—", unit: "", label: "本机电量")
+                    statBox(icon: "clock.fill", value: "\(store.partnerStatus?.appMinutes ?? 0)", unit: "分", label: "今日使用")
+                    statBox(icon: "arrow.up.app", value: "\(store.partnerStatus?.appLaunches ?? 0)", unit: "次", label: "启动")
+                    statBox(icon: "battery.75", value: partnerBatteryText, unit: "", label: "电量")
                 }
-                Text("iOS 不允许普通 App 读取其他 App 的使用时长（需 Apple 特批 family-controls 权限），这里只统计本 App 自身。")
+                HStack(spacing: 10) {
+                    statBox(icon: "wifi", value: store.partnerStatus?.network ?? "—", unit: "", label: "网络")
+                    statBox(
+                        icon: "internaldrive",
+                        value: store.partnerStatus?.storageFreeMB.map { String(format: "%.1fG", Double($0) / 1024) } ?? "—",
+                        unit: "",
+                        label: "可用空间"
+                    )
+                    statBox(icon: "bolt.slash", value: store.partnerStatus?.lowPower == true ? "开" : "关", unit: "", label: "低电量")
+                }
+                Text("以上是 TA 的 App 主动上报的真实状态（每 60 秒一次）。iOS 不允许读取其他 App 的使用时长，这里的「使用」指 TA 打开本 App 的时长。")
                     .font(.system(size: 10))
                     .foregroundColor(Theme.textMuted)
             }
         }
+    }
+
+    private var partnerBatteryText: String {
+        guard let b = store.partnerStatus?.battery else { return "—" }
+        return "\(b)%"
     }
 
     private var trackEntry: some View {

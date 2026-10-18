@@ -322,9 +322,11 @@ public struct RealtimeMapScreen: View {
                         avatar: "👧🏻",
                         distanceKm: store.distanceKmToPartner(myLocation: session.lastLocation),
                         isOnline: partnerOnline,
-                        deviceModel: "iOS",
-                        batteryPercent: store.lastKnownPartnerLocation?.battery.map { Int(($0.level * 100).rounded()) },
-                        networkLabel: partnerOnline ? "实时共享中" : "暂时离线"
+                        deviceModel: store.partnerStatus?.deviceModel ?? "iOS",
+                        batteryPercent: store.partnerStatus?.battery
+                            ?? store.lastKnownPartnerLocation?.battery.map { Int(($0.level * 100).rounded()) },
+                        networkLabel: store.partnerStatus?.network
+                            ?? (partnerOnline ? "实时共享中" : "暂时离线")
                     )
                 } else {
                     pairPromptCard

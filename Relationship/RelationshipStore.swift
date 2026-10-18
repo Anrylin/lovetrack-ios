@@ -10,6 +10,43 @@ public final class RelationshipStore: ObservableObject {
     @Published public var relationship: Relationship?
     @Published public var lastKnownPartnerLocation: LocationPoint?
     @Published public var isPaired: Bool = false
+    /// 对方的实时状态（电量/充电/网络/机型/存储/今日使用时长）
+    @Published public var partnerStatus: PartnerStatus?
+
+    /// 对方状态快照（来自后端 partner:status 推送）
+    public struct PartnerStatus: Equatable {
+        public var battery: Int?
+        public var charging: Bool
+        public var network: String?
+        public var deviceModel: String?
+        public var storageFreeMB: Int?
+        public var lowPower: Bool
+        public var appMinutes: Int
+        public var appLaunches: Int
+        public var at: Date
+
+        public init(
+            battery: Int? = nil,
+            charging: Bool = false,
+            network: String? = nil,
+            deviceModel: String? = nil,
+            storageFreeMB: Int? = nil,
+            lowPower: Bool = false,
+            appMinutes: Int = 0,
+            appLaunches: Int = 0,
+            at: Date = Date()
+        ) {
+            self.battery = battery
+            self.charging = charging
+            self.network = network
+            self.deviceModel = deviceModel
+            self.storageFreeMB = storageFreeMB
+            self.lowPower = lowPower
+            self.appMinutes = appMinutes
+            self.appLaunches = appLaunches
+            self.at = at
+        }
+    }
 
     private let realtime: RealtimeSyncServiceProtocol
     private var partnerLocationTask: Task<Void, Never>?

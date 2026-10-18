@@ -8,6 +8,58 @@
 
 ---
 
+## [v0.6.0-ai.1] — 2026-10-18
+
+本轮按需求补齐 6 项：统计 Tab、资料实时同步、SOS 紧急提醒、地图双头像配色、轨迹回放（v0.5 已完成）、省电模式。
+
+### 新增：统计 Tab（底部导航扩为 5 项）
+
+`StatisticsScreen`（写在 `AppTabView.swift` 内，避免新增文件改 pbxproj）：
+
+- **今日概览**：位置更新次数、本 App 使用分钟、配对天数
+- **近 7 天位置活动**：柱状图，数据来自 `GET /api/location/tracks` 的每日 `pointCount`
+- **App 使用**：今日分钟、启动次数、本机电量（`UsageStats` + `DeviceStatusMonitor`）
+- **轨迹入口**：直接打开 `TrackPlaybackView`
+- 未配对时只显示「配对后才有统计数据 → 去配对」
+
+> ⚠️ **iOS 限制**：需求里的「日 App 使用时长**排行**」指系统级屏幕时间统计，需要 Apple 特批
+> `com.apple.developer.family-controls` 权限，**自签版本拿不到**。所以这里只统计本 App 自身，
+> 并在卡片里如实写明原因。
+
+### 新增：昵称/头像实时同步
+
+- 后端 `PUT /api/auth/user/me` 成功后额外 `sendToPartner({ t: 'partner:profile', user })`。
+- 客户端 `handleServerMessage` 处理 `partner:profile` → 更新 `RelationshipStore.partner`。
+- 对方改名/换头像后，**我这边立刻更新**（原本要等下次拉 dashboard）。
+
+### 新增：一键 SOS 紧急提醒
+
+- 客户端 WS 发 `{ t: 'sos', lat, lng }`；后端转发 `{ t: 'sos', from, nickname, lat, lng, at }` 给伴侣。
+- 主页新增红色「紧急提醒 TA」按钮；发送后 `UINotificationFeedbackGenerator` 反馈。
+- 接收端：全屏 alert「🚨 紧急提醒」+ **错误级强震动**，文案带发送人昵称、时间，并提示是否附带位置。
+
+### 新增：省电模式
+
+- `GuardSettings.powerSaving`（持久化到 `UserDefaults`，key `lovetrack.powerSaving`）。
+- 开启后：**进入后台立即停止定位**（`locationManager.stop()`），回到前台自动恢复。
+- 守护设置页新增开关，副标题「只在打开 App 时共享位置，进后台就停」。
+- 为此在根视图注入 `guardSettings` 环境对象（`GuardScreen` 需要 Binding）。
+
+### 改进：地图双头像配色
+
+- 我：蓝渐变圆 + `person.fill` + 白边 + 蓝色光晕
+- TA：粉紫渐变圆 + `heart.fill` + 白边 + 粉色光晕
+
+### 验证
+
+- 后端 SOS + 资料同步链路 **10/10 通过**：改名实时推送、emoji 同步、SOS 带位置、无位置 SOS、ack 回执。
+- 编译：run #25（失败：`locationManager.stop()` 缺 await）→ #26 修复通过 → #27 统计 Tab 通过 → #28 配色通过。
+- 产物 1.10 MB；`Assets.car` 与 `AppIcon60x60@2x.png` 仍在（图标未丢失）。
+- 二进制校验：`近 7 天位置活动`、`省电模式`、`配对后才有统计数据`、`只在打开 App 时共享位置` 均已进包。
+  （`今日概览`(12B)、`紧急提醒 TA`(15B) 因 Swift small-string 优化被内联，搜不到属正常。）
+
+---
+
 ## [v0.5.0-ai.1] — 2026-10-18
 
 ### 新增：历史轨迹回放（接真实数据）

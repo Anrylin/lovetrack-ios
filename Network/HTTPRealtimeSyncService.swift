@@ -51,6 +51,9 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
     /// 收到紧急提醒（SOS）
     public var onSOS: (([String: Any]) -> Void)?
 
+    /// 对方状态更新（电量/网络/使用时长等）
+    public var onPartnerStatus: (([String: Any]) -> Void)?
+
     // MARK: - Internal state
 
     private let session: URLSession
@@ -351,9 +354,35 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
         Log.info("HTTPRealtime", "📸 截图已上传（\(base64.count / 1024) KB）")
     }
 
+    /// 上报本机状态（供对方查看）
+    public func reportStatus(
+        battery: Int?,
+        charging: Bool,
+        network: String,
+        deviceModel: String,
+        storageFreeMB: Int,
+        lowPower: Bool,
+        appMinutes: Int,
+        appLaunches: Int
+    ) async throws {
+        guard isConnected, let task = task else { return }
+        var msg: [String: Any] = [
+            "t": "status",
+            "charging": charging,
+            "network": network,
+            "deviceModel": deviceModel,
+            "storageFreeMB": storageFreeMB,
+            "lowPower": lowPower,
+            "appMinutes": appMinutes,
+            "appLaunches": appLaunches,
+        ]
+        if let b = battery { msg["battery"] = b }
+        let data = try JSONSerialization.data(withJSONObject: msg)
+        try await task.send(.string(String(data: data, encoding: .utf8) ?? "{}"))
+    }
+
     /// 一键 SOS（附当前位置）
-    public func sendSOS(lat: Double?, lng: Double?) async throws {
-        guard isConnected, let task = task else {
+    public func sendSOS(lat: Double?, lng: Double?) async throws {        guard isConnected, let task = task else {
             throw ServiceError.connectionClosed
         }
         var msg: [String: Any] = ["t": "sos"]
@@ -885,9 +914,8 @@ public final class HTTPRealtimeSyncService: RealtimeSyncServiceProtocol, @unchec
             onPairSuccess?("")
 
         case "partner:status":
-            let sharing = msg["sharing"] as? Int
-            let battery = msg["battery"] as? Int
-            Log.info("HTTPRealtime", "partner:status sharing=\(sharing.map(String.init) ?? "-") battery=\(battery.map(String.init) ?? "-")")
+            Log.info("HTTPRealtime", "对方状态更新：电量 \(msg["battery"] as? Int ?? -1)% 网络 \(msg["network"] as? String ?? "?") 使用 \(msg["appMinutes"] as? Int ?? 0) 分钟")
+            onPartnerStatus?(msg)
 
         case "presence":
             let online = msg["online"] as? Bool ?? false

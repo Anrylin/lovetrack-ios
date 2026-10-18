@@ -155,6 +155,24 @@ final class AppSession: ObservableObject {
                     Log.warn("AppSession", "🚨 收到紧急提醒")
                 }
             }
+            http.onPartnerStatus = { [weak self] msg in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let at = msg["at"] as? TimeInterval ?? Date().timeIntervalSince1970 * 1000
+                    self.relationshipStore.partnerStatus = RelationshipStore.PartnerStatus(
+                        battery: msg["battery"] as? Int,
+                        charging: msg["charging"] as? Bool ?? false,
+                        network: msg["network"] as? String,
+                        deviceModel: msg["deviceModel"] as? String,
+                        storageFreeMB: msg["storageFreeMB"] as? Int,
+                        lowPower: msg["lowPower"] as? Bool ?? false,
+                        appMinutes: msg["appMinutes"] as? Int ?? 0,
+                        appLaunches: msg["appLaunches"] as? Int ?? 0,
+                        at: Date(timeIntervalSince1970: at / 1000)
+                    )
+                    Log.info("AppSession", "已更新对方状态：电量 \(msg["battery"] as? Int ?? -1)%")
+                }
+            }
         }
 
         // 监听 WebSocket 推送的 pair_success：对方加入 → 自动跳转主页
@@ -378,6 +396,8 @@ final class AppSession: ObservableObject {
         startPartnerHttpPolling()
         // 8. 暂停到期检查（每分钟跑一次）
         startPauseCheckLoop()
+        // 9. 定时上报本机状态（电量/网络/今日使用），让对方能看到
+        startStatusReporting()
         isReady = true
     }
 
@@ -507,6 +527,43 @@ final class AppSession: ObservableObject {
         }
     }
 
+    private var statusTask: Task<Void, Never>?
+
+    /// 每 60 秒上报一次本机状态（电量/网络/存储/今日使用），让对方能看到
+    func startStatusReporting() {
+        statusTask?.cancel()
+        statusTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.reportMyStatus()
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+            }
+        }
+    }
+
+    @MainActor
+    func reportMyStatus() async {
+        guard let http = realtime as? HTTPRealtimeSyncService, http.isLoggedIn else { return }
+        let dev = DeviceStatusMonitor.shared
+        dev.refreshBattery()
+        dev.refreshStorage()
+
+        let d = UserDefaults.standard
+        do {
+            try await http.reportStatus(
+                battery: dev.battery >= 0 ? dev.battery : nil,
+                charging: dev.charging,
+                network: dev.network,
+                deviceModel: UIDevice.current.model,
+                storageFreeMB: Int(dev.storageFreeGB * 1024),
+                lowPower: dev.lowPower,
+                appMinutes: d.integer(forKey: "usage.minutes"),
+                appLaunches: d.integer(forKey: "usage.launches")
+            )
+        } catch {
+            Log.warn("AppSession", "上报状态失败：\(error.localizedDescription)")
+        }
+    }
+
     func handleEnterForeground() {
         // 省电模式：回到前台要把定位重新拉起来
         if guardSettings.powerSaving {
@@ -514,6 +571,8 @@ final class AppSession: ObservableObject {
             applyGuardMode()
         }
         Task { await locationManager.handleAppForeground() }
+        // 切回前台立即报一次自己的状态
+        Task { await reportMyStatus() }
         // 切回前台立即拉一次对方位置（不等 15s 轮询）
         Task { await pollPartnerLocationOnce() }
         // 确保轮询在跑

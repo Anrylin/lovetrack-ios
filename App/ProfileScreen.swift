@@ -8,7 +8,7 @@ public struct ProfileScreen: View {
     @EnvironmentObject var session: AppSession
     @EnvironmentObject var store: RelationshipStore
 
-    @StateObject private var device = DeviceStatusMonitor()
+    @ObservedObject private var device = DeviceStatusMonitor.shared
     @StateObject private var usage = UsageStats()
 
     @State private var showEdit = false
@@ -524,6 +524,9 @@ public struct ProfileScreen: View {
 /// 采集电量、充电、低电量模式、网络、存储 —— 全部是系统真实值。
 /// 对方的手机状态需要上报后端再由服务端推送，这里只负责本机。
 final class DeviceStatusMonitor: ObservableObject {
+    /// 全局共享实例（AppSession 上报状态时也要读）
+    static let shared = DeviceStatusMonitor()
+
     @Published var battery: Int = -1        // -1 表示系统未提供（模拟器常见）
     @Published var charging = false
     @Published var lowPower = false
