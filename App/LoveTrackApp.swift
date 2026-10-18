@@ -526,7 +526,7 @@ final class AppSession: ObservableObject {
         // 省电模式：进入后台直接停采，只在前台共享位置
         if guardSettings.powerSaving {
             Log.info("AppSession", "省电模式：进入后台，停止定位")
-            locationManager.stop()
+            Task { await locationManager.stop() }
             return
         }
         Task { await locationManager.handleAppBackground() }
